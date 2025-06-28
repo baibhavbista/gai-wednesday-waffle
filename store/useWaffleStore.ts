@@ -62,6 +62,12 @@ export interface WaffleState {
   createGroup: (name: string) => Promise<Group>;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
+  
+  // Real-time actions
+  addWaffle: (waffle: WaffleMessage) => void;
+  updateWaffle: (waffleId: string, updates: Partial<WaffleMessage>) => void;
+  removeWaffle: (waffleId: string) => void;
+  updateGroupMemberCount: (groupId: string, delta: number) => void;
 }
 
 // Mock data
@@ -322,4 +328,45 @@ export const useWaffleStore = create<WaffleState>((set, get) => ({
   setLoading: (loading) => set({ isLoading: loading }),
   
   setError: (error) => set({ error }),
+  
+  // Real-time actions
+  addWaffle: (waffle) => {
+    set((state) => ({
+      messages: [waffle, ...state.messages],
+      groups: state.groups.map(group => 
+        group.id === waffle.groupId 
+          ? { ...group, lastMessage: waffle, unreadCount: group.unreadCount + 1 }
+          : group
+      ),
+    }));
+  },
+  
+  updateWaffle: (waffleId, updates) => {
+    set((state) => ({
+      messages: state.messages.map((message) =>
+        message.id === waffleId ? { ...message, ...updates } : message
+      ),
+    }));
+  },
+  
+  removeWaffle: (waffleId) => {
+    set((state) => ({
+      messages: state.messages.filter((message) => message.id !== waffleId),
+    }));
+  },
+  
+  updateGroupMemberCount: (groupId, delta) => {
+    set((state) => ({
+      groups: state.groups.map(group => 
+        group.id === groupId 
+          ? { 
+              ...group, 
+              members: delta > 0 
+                ? [...group.members] // Keep existing for now
+                : group.members // Will be updated by separate member management
+            }
+          : group
+      ),
+    }));
+  },
 }));

@@ -1,5 +1,15 @@
 import React, { useState } from 'react'
-import { Alert, StyleSheet, View, Text, TextInput, TouchableOpacity } from 'react-native'
+import { 
+  Alert, 
+  StyleSheet, 
+  View, 
+  Text, 
+  TextInput, 
+  TouchableOpacity, 
+  ScrollView, 
+  KeyboardAvoidingView,
+  Platform 
+} from 'react-native'
 import { useAuth } from '../hooks/useAuth'
 import { useGoogleAuth } from '../hooks/useGoogleAuth'
 
@@ -36,92 +46,103 @@ export default function Auth() {
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>🧇 Wednesday Waffle</Text>
-        <Text style={styles.subtitle}>
-          {isSignUp ? 'Create your account' : 'Welcome back'}
-        </Text>
-      </View>
-
-      <View style={styles.form}>
-        {/* Google Sign In Button */}
-        <TouchableOpacity
-          style={[styles.googleButton, (loading || googleLoading) && styles.buttonDisabled]}
-          onPress={handleGoogleAuth}
-          disabled={loading || googleLoading}
-        >
-          <Text style={styles.googleButtonText}>
-            {googleLoading ? 'Signing in...' : '🍎 Continue with Google'}
+    <KeyboardAvoidingView 
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+    >
+      <ScrollView 
+        contentContainerStyle={styles.scrollContainer}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.header}>
+          <Text style={styles.title}>🧇 Wednesday Waffle</Text>
+          <Text style={styles.subtitle}>
+            {isSignUp ? 'Create your account' : 'Welcome back'}
           </Text>
-        </TouchableOpacity>
-
-        <View style={styles.divider}>
-          <View style={styles.dividerLine} />
-          <Text style={styles.dividerText}>or</Text>
-          <View style={styles.dividerLine} />
         </View>
 
-        {isSignUp && (
+        <View style={styles.form}>
+          {/* Google Sign In Button */}
+          <TouchableOpacity
+            style={[styles.googleButton, (loading || googleLoading) && styles.buttonDisabled]}
+            onPress={handleGoogleAuth}
+            disabled={loading || googleLoading}
+          >
+            <Text style={styles.googleButtonText}>
+              {googleLoading ? 'Signing in...' : '🍎 Continue with Google'}
+            </Text>
+          </TouchableOpacity>
+
+          <View style={styles.divider}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>or</Text>
+            <View style={styles.dividerLine} />
+          </View>
+
+          {isSignUp && (
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Name</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Your name"
+                value={name}
+                onChangeText={setName}
+                autoCapitalize="words"
+              />
+            </View>
+          )}
+
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Name</Text>
+            <Text style={styles.label}>Email</Text>
             <TextInput
               style={styles.input}
-              placeholder="Your name"
-              value={name}
-              onChangeText={setName}
-              autoCapitalize="words"
+              placeholder="your@email.com"
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
             />
           </View>
-        )}
 
-        <View style={styles.inputContainer}>
-          <Text style={styles.label}>Email</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="your@email.com"
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-          />
+          <View style={styles.inputContainer}>
+            <Text style={styles.label}>Password</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Your password"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              autoCapitalize="none"
+            />
+          </View>
+
+          <TouchableOpacity
+            style={[styles.button, loading && styles.buttonDisabled]}
+            onPress={handleAuth}
+            disabled={loading}
+          >
+            <Text style={styles.buttonText}>
+              {loading ? 'Loading...' : isSignUp ? 'Sign Up' : 'Sign In'}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.switchButton}
+            onPress={() => setIsSignUp(!isSignUp)}
+          >
+            <Text style={styles.switchText}>
+              {isSignUp 
+                ? 'Already have an account? Sign in' 
+                : "Don't have an account? Sign up"
+              }
+            </Text>
+          </TouchableOpacity>
         </View>
-
-        <View style={styles.inputContainer}>
-          <Text style={styles.label}>Password</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Your password"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            autoCapitalize="none"
-          />
-        </View>
-
-        <TouchableOpacity
-          style={[styles.button, loading && styles.buttonDisabled]}
-          onPress={handleAuth}
-          disabled={loading}
-        >
-          <Text style={styles.buttonText}>
-            {loading ? 'Loading...' : isSignUp ? 'Sign Up' : 'Sign In'}
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.switchButton}
-          onPress={() => setIsSignUp(!isSignUp)}
-        >
-          <Text style={styles.switchText}>
-            {isSignUp 
-              ? 'Already have an account? Sign in' 
-              : "Don't have an account? Sign up"
-            }
-          </Text>
-        </TouchableOpacity>
-      </View>
-    </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   )
 }
 
@@ -129,6 +150,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000',
+  },
+  scrollContainer: {
+    flexGrow: 1,
     justifyContent: 'center',
     padding: 24,
   },

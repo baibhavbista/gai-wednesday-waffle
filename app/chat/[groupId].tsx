@@ -100,13 +100,16 @@ export default function ChatScreen() {
             <ArrowLeft size={24} color="#374151" />
           </TouchableOpacity>
           
-          <View style={styles.headerInfo}>
+          <TouchableOpacity 
+            style={styles.headerInfo}
+            onPress={() => router.push(`/group-details/${groupId}`)}
+          >
             <Text style={styles.groupName}>{group.name}</Text>
             <Text style={styles.memberCount}>
               {group.members.length} members
               {missingMembers.length > 0 && ` • ${missingMembers.length} pending`}
             </Text>
-          </View>
+          </TouchableOpacity>
 
           <View style={styles.memberAvatars}>
             {group.members.slice(0, 3).map((member, index) => (

@@ -8,17 +8,23 @@ import {
   TouchableOpacity,
   Image,
   Switch,
+  Alert,
 } from 'react-native';
 import { useWaffleStore } from '@/store/useWaffleStore';
+import { useAuth } from '@/hooks/useAuth';
 import { Settings, Bell, Shield, CircleHelp as HelpCircle, LogOut, ChevronRight, User, Camera } from 'lucide-react-native';
 
 export default function ProfileScreen() {
   const { currentUser, groups } = useWaffleStore();
+  const { signOut } = useAuth();
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [viewOnceEnabled, setViewOnceEnabled] = useState(true);
+  const [signingOut, setSigningOut] = useState(false);
 
-  const totalWaffles = groups.reduce((total, group) => total + group.waffleCount, 0);
+  // Calculate stats from available data
   const totalMembers = groups.reduce((total, group) => total + group.members.length, 0);
+  // For now, we'll use a placeholder for waffles until we implement message counting
+  const totalWaffles = 0;
 
   const settingsOptions = [
     {
@@ -131,9 +137,29 @@ export default function ProfileScreen() {
         </View>
 
         {/* Logout */}
-        <TouchableOpacity style={styles.logoutButton}>
+        <TouchableOpacity 
+          style={[styles.logoutButton, signingOut && styles.logoutButtonDisabled]} 
+          onPress={async () => {
+            try {
+              setSigningOut(true);
+              const { error } = await signOut();
+              if (error) {
+                console.error('Sign out error:', error);
+                Alert.alert('Error', 'Failed to sign out. Please try again.');
+              }
+            } catch (error) {
+              console.error('Sign out exception:', error);
+              Alert.alert('Error', 'Failed to sign out. Please try again.');
+            } finally {
+              setSigningOut(false);
+            }
+          }}
+          disabled={signingOut}
+        >
           <LogOut size={20} color="#EF4444" />
-          <Text style={styles.logoutText}>Sign Out</Text>
+          <Text style={styles.logoutText}>
+            {signingOut ? 'Signing Out...' : 'Sign Out'}
+          </Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
@@ -307,6 +333,9 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderBottomWidth: 1,
     borderColor: '#F3F4F6',
+  },
+  logoutButtonDisabled: {
+    opacity: 0.5,
   },
   logoutText: {
     color: '#EF4444',

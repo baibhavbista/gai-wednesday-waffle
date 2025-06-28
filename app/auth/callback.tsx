@@ -7,22 +7,24 @@ export default function AuthCallback() {
   const router = useRouter()
   const params = useLocalSearchParams()
 
-  console.log('🎯 AuthCallback component rendered!')
-  console.log('Router params:', params)
+  if (__DEV__) {
+    console.log('🎯 AuthCallback component rendered!')
+    console.log('Router params:', params)
+  }
 
   useEffect(() => {
     async function handleAuthCallback() {
       try {
-        console.log('🔥 OAUTH CALLBACK HANDLER STARTED')
-        console.log('OAuth callback received with params:', params)
-        console.log('Platform:', Platform.OS)
-        console.log('Current URL:', typeof window !== 'undefined' ? window.location.href : 'Not web')
+        if (__DEV__) {
+          console.log('🔥 OAUTH CALLBACK HANDLER STARTED')
+          console.log('OAuth callback received with params:', params)
+          console.log('Platform:', Platform.OS)
+        }
         
         // Handle web OAuth tokens from URL hash
         if (Platform.OS === 'web' && typeof window !== 'undefined') {
-          console.log('🌐 Processing web OAuth tokens...')
+          if (__DEV__) console.log('🌐 Processing web OAuth tokens...')
           const hash = window.location.hash
-          console.log('URL hash:', hash)
           
           if (hash) {
             const hashParams = new URLSearchParams(hash.substring(1))
@@ -30,16 +32,16 @@ export default function AuthCallback() {
             const refreshToken = hashParams.get('refresh_token')
             const expiresAt = hashParams.get('expires_at')
             
-            console.log('🔑 OAuth tokens found:', {
-              hasAccessToken: !!accessToken,
-              hasRefreshToken: !!refreshToken,
-              expiresAt,
-              accessTokenLength: accessToken?.length,
-              refreshTokenLength: refreshToken?.length
-            })
-            
-            if (accessToken && refreshToken) {
-              console.log('🚀 Setting Supabase session with OAuth tokens...')
+                         if (__DEV__) {
+               console.log('🔑 OAuth tokens found:', {
+                 hasAccessToken: !!accessToken,
+                 hasRefreshToken: !!refreshToken,
+                 expiresAt,
+               })
+             }
+             
+             if (accessToken && refreshToken) {
+               if (__DEV__) console.log('🚀 Setting Supabase session with OAuth tokens...')
               
               // Set the session with the OAuth tokens
               const { data, error } = await supabase.auth.setSession({
@@ -53,21 +55,18 @@ export default function AuthCallback() {
                 return
               }
               
-              if (data.session) {
-                console.log('✅ OAuth successful! User authenticated:', data.session.user.email)
-                console.log('User data:', {
-                  id: data.session.user.id,
-                  email: data.session.user.email,
-                  name: data.session.user.user_metadata?.full_name
-                })
-                
-                // Clear the hash from URL
-                window.history.replaceState(null, '', window.location.pathname)
-                
-                // Redirect to main app
-                console.log('🏠 Redirecting to main app...')
-                router.replace('/(tabs)')
-                return
+                             if (data.session) {
+                 if (__DEV__) {
+                   console.log('✅ OAuth successful! User authenticated:', data.session.user.email)
+                   console.log('🏠 Redirecting to main app...')
+                 }
+                 
+                 // Clear the hash from URL
+                 window.history.replaceState(null, '', window.location.pathname)
+                 
+                 // Redirect to main app
+                 router.replace('/(tabs)')
+                 return
               } else {
                 console.error('❌ Session creation failed - no session data')
               }

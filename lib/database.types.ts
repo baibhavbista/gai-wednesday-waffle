@@ -33,18 +33,21 @@ export interface Database {
           invite_code: string
           created_by: string
           created_at: string
+          updated_at: string
         }
         Insert: {
           id?: string
           name: string
-          invite_code: string
+          invite_code?: string
           created_by: string
           created_at?: string
+          updated_at?: string
         }
         Update: {
           id?: string
           name?: string
           invite_code?: string
+          updated_at?: string
         }
       }
       group_members: {
@@ -74,6 +77,9 @@ export interface Database {
           created_at: string
           expires_at: string | null
           view_count: number
+          ai_caption: string | null
+          ai_transcript: string | null
+          ai_summary: string | null
         }
         Insert: {
           id?: string
@@ -86,6 +92,9 @@ export interface Database {
           created_at?: string
           expires_at?: string | null
           view_count?: number
+          ai_caption?: string | null
+          ai_transcript?: string | null
+          ai_summary?: string | null
         }
         Update: {
           content_url?: string | null
@@ -93,6 +102,9 @@ export interface Database {
           retention_type?: 'view_once' | '7_days' | 'forever'
           expires_at?: string | null
           view_count?: number
+          ai_caption?: string | null
+          ai_transcript?: string | null
+          ai_summary?: string | null
         }
       }
     }

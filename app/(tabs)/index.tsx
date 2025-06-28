@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,14 +7,167 @@ import {
   SafeAreaView,
   TouchableOpacity,
   Image,
+  Modal,
+  TextInput,
+  Alert,
+  ActivityIndicator,
+  ActionSheetIOS,
+  Platform,
 } from 'react-native';
 import { useWaffleStore } from '@/store/useWaffleStore';
 import { useRouter } from 'expo-router';
-import { Plus, MessageCircle, Clock } from 'lucide-react-native';
+import { useRealtime } from '@/hooks/useRealtime';
+import { groupsService } from '@/lib/database-service';
+import { Plus, MessageCircle, Clock, Users, UserPlus } from 'lucide-react-native';
 
 export default function ChatsScreen() {
-  const { groups, currentUser } = useWaffleStore();
+  const { groups, setGroups, currentUser, isLoading, setLoading } = useWaffleStore();
+  const { status, setCallbacks } = useRealtime();
   const router = useRouter();
+
+  // Group management state
+  const [showJoinModal, setShowJoinModal] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [inviteCode, setInviteCode] = useState('');
+  const [groupName, setGroupName] = useState('');
+
+  // Load user's groups
+  const loadGroups = async () => {
+    try {
+      setLoading(true);
+      const { data: userGroups, error } = await groupsService.getUserGroups();
+      
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      if (userGroups) {
+        // Convert to store format and set (placeholder - using mock data structure for now)
+        console.log('📋 Loaded', userGroups.length, 'groups');
+        // TODO: Implement proper conversion from GroupWithMembers to Group
+      }
+    } catch (error) {
+      console.error('❌ Error loading groups:', error);
+      Alert.alert('Error', 'Failed to load groups');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Set up real-time callbacks for group updates
+  useEffect(() => {
+    setCallbacks({
+      onGroupUpdate: (group) => {
+        if (__DEV__) console.log('🏗️ Real-time group update:', group.name);
+        // Reload groups to get updated data
+        loadGroups();
+      },
+      onMemberUpdate: (member, action) => {
+        if (__DEV__) console.log('👥 Real-time member update:', action, member.user_id);
+        // Reload groups to get updated member counts
+        loadGroups();
+      },
+    });
+  }, [setCallbacks]);
+
+  // Load groups on mount
+  useEffect(() => {
+    loadGroups();
+  }, []);
+
+  const handleJoinGroup = async () => {
+    if (!inviteCode.trim()) {
+      Alert.alert('Error', 'Please enter an invite code');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const { data: joinedGroup, error } = await groupsService.joinByInviteCode(inviteCode.trim().toUpperCase());
+      
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      if (joinedGroup) {
+        setInviteCode('');
+        setShowJoinModal(false);
+        Alert.alert('Success', `Joined "${joinedGroup.name}" successfully!`);
+        loadGroups(); // Refresh groups list
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to join group';
+      Alert.alert('Error', errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreateGroup = async () => {
+    if (!groupName.trim()) {
+      Alert.alert('Error', 'Please enter a group name');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const { data: newGroup, error } = await groupsService.create({
+        name: groupName.trim(),
+      });
+
+      // console log the data i.e. new group
+      console.log('🔍 New group data:', newGroup);
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      if (newGroup) {
+        setGroupName('');
+        setShowCreateModal(false);
+        Alert.alert(
+          'Success', 
+          `Group "${newGroup.name}" created!\n\nInvite Code: ${newGroup.invite_code}\n\nShare this code with friends to join!`
+        );
+        loadGroups(); // Refresh groups list
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to create group';
+      Alert.alert('Error', errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle + button press with action sheet
+  const handleAddPress = () => {
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ['Cancel', 'Create Group', 'Join Group'],
+          cancelButtonIndex: 0,
+        },
+        (buttonIndex) => {
+          if (buttonIndex === 1) {
+            setShowCreateModal(true);
+          } else if (buttonIndex === 2) {
+            setShowJoinModal(true);
+          }
+        }
+      );
+    } else {
+      // For Android, we'll show a simple modal with options
+      Alert.alert(
+        'Group Actions',
+        'What would you like to do?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Create Group', onPress: () => setShowCreateModal(true) },
+          { text: 'Join Group', onPress: () => setShowJoinModal(true) },
+        ]
+      );
+    }
+  };
 
   const getTimeAgo = (date: Date) => {
     const now = new Date();
@@ -41,7 +194,7 @@ export default function ChatsScreen() {
         </View>
         <TouchableOpacity 
           style={styles.newChatButton}
-          onPress={() => router.push('/groups')}
+          onPress={handleAddPress}
         >
           <Plus size={20} color="#F97316" />
         </TouchableOpacity>
@@ -146,12 +299,103 @@ export default function ChatsScreen() {
           </Text>
           <TouchableOpacity 
             style={styles.createGroupButton}
-            onPress={() => router.push('/groups')}
+            onPress={handleAddPress}
           >
             <Text style={styles.createGroupText}>Create Your First Group</Text>
           </TouchableOpacity>
         </View>
       )}
+
+      {/* Join Group Modal */}
+      <Modal
+        visible={showJoinModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowJoinModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Join Group</Text>
+            <Text style={styles.modalSubtitle}>
+              Enter the invite code shared by your friends
+            </Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Enter invite code (e.g. ABC123)"
+              placeholderTextColor="#9CA3AF"
+              value={inviteCode}
+              onChangeText={setInviteCode}
+              autoCapitalize="characters"
+              maxLength={6}
+            />
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={() => {
+                  setInviteCode('');
+                  setShowJoinModal(false);
+                }}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.primaryButton, isLoading && styles.disabledButton]}
+                onPress={handleJoinGroup}
+                disabled={isLoading}
+              >
+                <Text style={styles.primaryButtonText}>
+                  {isLoading ? 'Joining...' : 'Join'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Create Group Modal */}
+      <Modal
+        visible={showCreateModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowCreateModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Create Group</Text>
+            <Text style={styles.modalSubtitle}>
+              Give your group a name to get started
+            </Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Group name (e.g. College Squad)"
+              placeholderTextColor="#9CA3AF"
+              value={groupName}
+              onChangeText={setGroupName}
+              maxLength={50}
+            />
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={() => {
+                  setGroupName('');
+                  setShowCreateModal(false);
+                }}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.primaryButton, isLoading && styles.disabledButton]}
+                onPress={handleCreateGroup}
+                disabled={isLoading}
+              >
+                <Text style={styles.primaryButtonText}>
+                  {isLoading ? 'Creating...' : 'Create'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -361,5 +605,77 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontFamily: 'Poppins-SemiBold',
     fontSize: 16,
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontFamily: 'Poppins-Bold',
+    color: '#1F2937',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  modalSubtitle: {
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
+    color: '#6B7280',
+    marginBottom: 24,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  input: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 8,
+    padding: 16,
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
+    color: '#1F2937',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    marginBottom: 24,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  cancelButton: {
+    flex: 1,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  cancelButtonText: {
+    fontSize: 16,
+    fontFamily: 'Inter-SemiBold',
+    color: '#6B7280',
+  },
+  primaryButton: {
+    flex: 1,
+    backgroundColor: '#F97316',
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  primaryButtonText: {
+    fontSize: 16,
+    fontFamily: 'Inter-SemiBold',
+    color: '#FFFFFF',
+  },
+  disabledButton: {
+    opacity: 0.5,
   },
 });
