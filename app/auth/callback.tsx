@@ -1,0 +1,126 @@
+import React, { useEffect } from 'react'
+import { View, Text, ActivityIndicator, Platform } from 'react-native'
+import { useRouter, useLocalSearchParams } from 'expo-router'
+import { supabase } from '../../lib/supabase'
+
+export default function AuthCallback() {
+  const router = useRouter()
+  const params = useLocalSearchParams()
+
+  console.log('🎯 AuthCallback component rendered!')
+  console.log('Router params:', params)
+
+  useEffect(() => {
+    async function handleAuthCallback() {
+      try {
+        console.log('🔥 OAUTH CALLBACK HANDLER STARTED')
+        console.log('OAuth callback received with params:', params)
+        console.log('Platform:', Platform.OS)
+        console.log('Current URL:', typeof window !== 'undefined' ? window.location.href : 'Not web')
+        
+        // Handle web OAuth tokens from URL hash
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
+          console.log('🌐 Processing web OAuth tokens...')
+          const hash = window.location.hash
+          console.log('URL hash:', hash)
+          
+          if (hash) {
+            const hashParams = new URLSearchParams(hash.substring(1))
+            const accessToken = hashParams.get('access_token')
+            const refreshToken = hashParams.get('refresh_token')
+            const expiresAt = hashParams.get('expires_at')
+            
+            console.log('🔑 OAuth tokens found:', {
+              hasAccessToken: !!accessToken,
+              hasRefreshToken: !!refreshToken,
+              expiresAt,
+              accessTokenLength: accessToken?.length,
+              refreshTokenLength: refreshToken?.length
+            })
+            
+            if (accessToken && refreshToken) {
+              console.log('🚀 Setting Supabase session with OAuth tokens...')
+              
+              // Set the session with the OAuth tokens
+              const { data, error } = await supabase.auth.setSession({
+                access_token: accessToken,
+                refresh_token: refreshToken,
+              })
+              
+              if (error) {
+                console.error('❌ Error setting session:', error)
+                router.replace('/')
+                return
+              }
+              
+              if (data.session) {
+                console.log('✅ OAuth successful! User authenticated:', data.session.user.email)
+                console.log('User data:', {
+                  id: data.session.user.id,
+                  email: data.session.user.email,
+                  name: data.session.user.user_metadata?.full_name
+                })
+                
+                // Clear the hash from URL
+                window.history.replaceState(null, '', window.location.pathname)
+                
+                // Redirect to main app
+                console.log('🏠 Redirecting to main app...')
+                router.replace('/(tabs)')
+                return
+              } else {
+                console.error('❌ Session creation failed - no session data')
+              }
+            } else {
+              console.error('❌ Missing required OAuth tokens in URL hash')
+            }
+          } else {
+            console.error('❌ No hash found in URL')
+          }
+        }
+        
+        // Fallback: Check if session already exists (for mobile deep links)
+        const { data: { session }, error } = await supabase.auth.getSession()
+        
+        if (error) {
+          console.error('OAuth callback error:', error)
+          router.replace('/')
+          return
+        }
+
+        if (session) {
+          console.log('Session found, user authenticated:', session.user.email)
+          router.replace('/(tabs)')
+        } else {
+          console.log('No session found, redirecting to auth')
+          router.replace('/')
+        }
+      } catch (error) {
+        console.error('OAuth callback error:', error)
+        router.replace('/')
+      }
+    }
+
+    // Add a small delay to ensure the component is mounted
+    const timeoutId = setTimeout(handleAuthCallback, 100)
+    return () => clearTimeout(timeoutId)
+  }, [params, router])
+
+  return (
+    <View style={{ 
+      flex: 1, 
+      justifyContent: 'center', 
+      alignItems: 'center', 
+      backgroundColor: '#000' 
+    }}>
+      <ActivityIndicator size="large" color="#f59e0b" />
+      <Text style={{ 
+        color: '#fff', 
+        marginTop: 16, 
+        fontSize: 16 
+      }}>
+        Completing sign in...
+      </Text>
+    </View>
+  )
+} 
