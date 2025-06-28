@@ -266,7 +266,28 @@ export default function ChatsScreen() {
 
       {/* Chat List */}
       <ScrollView style={styles.chatList} showsVerticalScrollIndicator={false}>
-        {groups.map((group) => {
+        {groups
+          .sort((a, b) => {
+            // Get the most recent activity time for each group
+            const getRecentActivityTime = (group: typeof a) => {
+              if (!group.lastMessage) {
+                // No messages, use group creation time
+                return group.createdAt.getTime();
+              }
+              // Use whichever is more recent: last message or group creation
+              return Math.max(
+                group.lastMessage.createdAt.getTime(),
+                group.createdAt.getTime()
+              );
+            };
+            
+            const aTime = getRecentActivityTime(a);
+            const bTime = getRecentActivityTime(b);
+            
+            // Sort by most recent activity first
+            return bTime - aTime;
+          })
+          .map((group) => {
           const missingMembers = getMissingMembers(group);
           const isWednesday = new Date().getDay() === 3;
           
