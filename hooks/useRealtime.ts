@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { RealtimeChannel } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import { useAuth } from './useAuth'
-import { useWaffleStore, WaffleMessage } from '../store/useWaffleStore'
+import { useWaffleStore, WaffleMessage, Group } from '../store/useWaffleStore'
+import { groupsService } from '../lib/database-service'
 import type { Database } from '../lib/database.types'
 
 type Tables = Database['public']['Tables']
@@ -17,7 +18,7 @@ const waffleRowToMessage = (row: WaffleRow, userName: string = 'Loading...', use
   userName,
   userAvatar: userAvatar || '',
   content: {
-    type: row.content_type || 'photo',
+    type: row.content_type || 'text',
     url: row.content_url || '',
   },
   caption: row.caption || '',
@@ -41,8 +42,74 @@ interface RealtimeStatus {
 interface SubscriptionCallbacks {
   onWaffleUpdate?: (waffle: WaffleRow) => void
   onWaffleDelete?: (waffleId: string) => void
-  onGroupUpdate?: (group: GroupRow) => void
+  onGroupUpdate?: (group: GroupRow, action: 'INSERT' | 'UPDATE' | 'DELETE') => void
   onMemberUpdate?: (member: GroupMemberRow, action: 'INSERT' | 'DELETE') => void
+}
+
+// Smart group update helpers
+const handleGroupRealtime = async (
+  group: GroupRow, 
+  action: 'INSERT' | 'UPDATE' | 'DELETE',
+  userId: string,
+  {
+    addGroupRealtime,
+    updateGroupRealtime, 
+    removeGroupRealtime,
+    loadUserGroups
+  }: {
+    addGroupRealtime: (group: Group) => void
+    updateGroupRealtime: (groupId: string, updates: Partial<Group>) => void
+    removeGroupRealtime: (groupId: string) => void
+    loadUserGroups: () => Promise<void>
+  }
+) => {
+  if (__DEV__) console.log('🏗️ Smart group update:', action, group.name)
+
+  switch (action) {
+    case 'INSERT':
+      // Check if user is a member of this new group before adding
+      try {
+        const { data: members } = await groupsService.getGroupMembers(group.id)
+        const isMember = members?.some(m => m.user_id === userId)
+        
+        if (isMember) {
+          // Transform to store format
+          const storeGroup: Group = {
+            id: group.id,
+            name: group.name,
+            inviteCode: group.invite_code,
+            createdAt: new Date(group.created_at),
+            unreadCount: 0,
+            members: members?.map(member => ({
+              id: member.user_id,
+              name: member.user_name,
+              avatar: member.user_avatar || '',
+              lastActive: new Date(member.joined_at),
+              hasPostedThisWeek: false,
+            })) || [],
+          }
+          addGroupRealtime(storeGroup)
+          if (__DEV__) console.log('✅ Added new group to store:', group.name)
+        }
+      } catch (error) {
+        if (__DEV__) console.error('❌ Error checking group membership:', error)
+        // Fallback to full reload
+        loadUserGroups()
+      }
+      break
+
+    case 'UPDATE':
+      // Update group details
+      updateGroupRealtime(group.id, {
+        name: group.name,
+        inviteCode: group.invite_code,
+      })
+      break
+
+    case 'DELETE':
+      removeGroupRealtime(group.id)
+      break
+  }
 }
 
 export function useRealtime() {
@@ -52,6 +119,11 @@ export function useRealtime() {
     updateWaffle, 
     removeWaffle, 
     updateGroupMemberCount,
+    addGroupRealtime,
+    updateGroupRealtime,
+    removeGroupRealtime,
+    updateGroupMembers,
+    loadUserGroups,
     currentGroupId 
   } = useWaffleStore()
   
@@ -91,8 +163,11 @@ export function useRealtime() {
           switch (payload.eventType) {
             case 'INSERT':
               const newWaffle = payload.new as WaffleRow
-              addWaffle(waffleRowToMessage(newWaffle))
+              // TODO: Fetch user details for proper display
+              const newMessage = waffleRowToMessage(newWaffle, 'New User', null)
+              addWaffle(newMessage)
               callbacksRef.current.onWaffleUpdate?.(newWaffle)
+              if (__DEV__) console.log('✅ Added new waffle to store via real-time:', newWaffle.id)
               break
 
             case 'UPDATE':
@@ -100,12 +175,14 @@ export function useRealtime() {
               const updatedMessage = waffleRowToMessage(updatedWaffle)
               updateWaffle(updatedWaffle.id, updatedMessage)
               callbacksRef.current.onWaffleUpdate?.(updatedWaffle)
+              if (__DEV__) console.log('✅ Updated waffle in store via real-time:', updatedWaffle.id)
               break
 
             case 'DELETE':
               const deletedWaffle = payload.old as WaffleRow
               removeWaffle(deletedWaffle.id)
               callbacksRef.current.onWaffleDelete?.(deletedWaffle.id)
+              if (__DEV__) console.log('✅ Removed waffle from store via real-time:', deletedWaffle.id)
               break
           }
         }
@@ -161,11 +238,11 @@ export function useRealtime() {
     }
   }
 
-  // Subscribe to user's groups updates
+  // Subscribe to user's groups updates with smart handling
   const subscribeToUserGroups = () => {
     if (!session?.user || channelsRef.current.has('user-groups')) return
 
-    if (__DEV__) console.log('🔄 Subscribing to user groups...')
+    if (__DEV__) console.log('🔄 Subscribing to user groups with smart updates...')
 
     const channel = supabase
       .channel('user-groups')
@@ -176,15 +253,78 @@ export function useRealtime() {
           schema: 'public',
           table: 'groups',
         },
-        (payload) => {
+        async (payload) => {
           if (__DEV__) console.log('🏗️ Group real-time update:', payload.eventType, payload)
           
           const group = (payload.new || payload.old) as GroupRow
-          callbacksRef.current.onGroupUpdate?.(group)
+          const action = payload.eventType as 'INSERT' | 'UPDATE' | 'DELETE'
+          
+          // Use smart group handling
+          await handleGroupRealtime(group, action, session.user.id, {
+            addGroupRealtime,
+            updateGroupRealtime,
+            removeGroupRealtime,
+            loadUserGroups
+          })
+          
+          // Also call the callback for backward compatibility
+          callbacksRef.current.onGroupUpdate?.(group, action)
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'group_members',
+        },
+        async (payload) => {
+          if (__DEV__) console.log('👥 Group member real-time update:', payload.eventType, payload)
+          
+          const member = (payload.new || payload.old) as GroupMemberRow
+          const action = payload.eventType as 'INSERT' | 'DELETE'
+          
+          // Only handle if it affects the current user
+          if (member.user_id === session.user.id) {
+            if (action === 'INSERT') {
+              // User joined a new group - trigger smart group reload
+              try {
+                await loadUserGroups()
+                if (__DEV__) console.log('✅ Reloaded groups after user joined new group')
+              } catch (error) {
+                if (__DEV__) console.error('❌ Error reloading after group join:', error)
+              }
+            } else if (action === 'DELETE') {
+              // User left a group - remove it
+              removeGroupRealtime(member.group_id)
+              if (__DEV__) console.log('✅ Removed group after user left:', member.group_id)
+            }
+          } else {
+            // Another user joined/left - update member count and list
+            try {
+              const { data: members } = await groupsService.getGroupMembers(member.group_id)
+              if (members) {
+                const transformedMembers = members.map(m => ({
+                  id: m.user_id,
+                  name: m.user_name,
+                  avatar: m.user_avatar || '',
+                  lastActive: new Date(m.joined_at),
+                  hasPostedThisWeek: false,
+                }))
+                updateGroupMembers(member.group_id, transformedMembers)
+                if (__DEV__) console.log('✅ Updated group members for:', member.group_id)
+              }
+            } catch (error) {
+              if (__DEV__) console.error('❌ Error updating group members:', error)
+            }
+          }
+          
+          // Call the callback
+          callbacksRef.current.onMemberUpdate?.(member, action)
         }
       )
       .subscribe((status) => {
-        if (__DEV__) console.log('📡 User groups subscription status:', status)
+        if (__DEV__) console.log('📡 Enhanced user groups subscription status:', status)
       })
 
     channelsRef.current.set('user-groups', channel)

@@ -15,13 +15,12 @@ import { useAuth } from '@/hooks/useAuth';
 import { Settings, Bell, Shield, CircleHelp as HelpCircle, LogOut, ChevronRight, User, Camera } from 'lucide-react-native';
 
 export default function ProfileScreen() {
-  const { currentUser, groups } = useWaffleStore();
-  const { signOut } = useAuth();
+  const { currentUser, groups, isLoading } = useWaffleStore();
+  const { signOut, isReady } = useAuth();
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  const [viewOnceEnabled, setViewOnceEnabled] = useState(true);
   const [signingOut, setSigningOut] = useState(false);
 
-  // Calculate stats from available data
+  // Calculate stats from available data - handle loading states
   const totalMembers = groups.reduce((total, group) => total + group.members.length, 0);
   // For now, we'll use a placeholder for waffles until we implement message counting
   const totalWaffles = 0;
@@ -41,25 +40,6 @@ export default function ProfileScreen() {
       ),
     },
     {
-      icon: Shield,
-      title: 'Privacy & Safety',
-      subtitle: 'Control who can add you to groups',
-      rightComponent: <ChevronRight size={20} color="#9CA3AF" />,
-    },
-    {
-      icon: Camera,
-      title: 'View-Once by Default',
-      subtitle: 'Make all waffles disappear after viewing',
-      rightComponent: (
-        <Switch
-          value={viewOnceEnabled}
-          onValueChange={setViewOnceEnabled}
-          trackColor={{ false: '#E5E7EB', true: '#FED7AA' }}
-          thumbColor={viewOnceEnabled ? '#F97316' : '#9CA3AF'}
-        />
-      ),
-    },
-    {
       icon: HelpCircle,
       title: 'Help & Support',
       subtitle: 'FAQs, contact us, and feedback',
@@ -73,14 +53,17 @@ export default function ProfileScreen() {
         {/* Profile Header */}
         <View style={styles.profileHeader}>
           <View style={styles.avatarContainer}>
-            <Image source={{ uri: currentUser?.avatar }} style={styles.avatar} />
+            <Image 
+              source={{ uri: currentUser?.avatar || 'https://via.placeholder.com/80' }} 
+              style={styles.avatar} 
+            />
             <TouchableOpacity style={styles.editAvatarButton}>
               <Camera size={16} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
           
-          <Text style={styles.userName}>{currentUser?.name}</Text>
-          <Text style={styles.userEmail}>{currentUser?.email}</Text>
+          <Text style={styles.userName}>{currentUser?.name || 'Loading...'}</Text>
+          <Text style={styles.userEmail}>{currentUser?.email || 'Loading...'}</Text>
           
           <TouchableOpacity style={styles.editProfileButton}>
             <User size={16} color="#F97316" />
@@ -91,17 +74,23 @@ export default function ProfileScreen() {
         {/* Stats */}
         <View style={styles.statsContainer}>
           <View style={styles.statItem}>
-            <Text style={styles.statNumber}>{groups.length}</Text>
+            <Text style={styles.statNumber}>
+              {isLoading ? '-' : groups.length}
+            </Text>
             <Text style={styles.statLabel}>Groups</Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
-            <Text style={styles.statNumber}>{totalWaffles}</Text>
+            <Text style={styles.statNumber}>
+              {isLoading ? '-' : totalWaffles}
+            </Text>
             <Text style={styles.statLabel}>Waffles Shared</Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
-            <Text style={styles.statNumber}>{totalMembers}</Text>
+            <Text style={styles.statNumber}>
+              {isLoading ? '-' : totalMembers}
+            </Text>
             <Text style={styles.statLabel}>Friends</Text>
           </View>
         </View>

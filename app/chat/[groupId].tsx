@@ -13,9 +13,10 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useWaffleStore } from '@/store/useWaffleStore';
-import { ArrowLeft, Camera, Heart, MessageCircle, Eye, Clock, Smile } from 'lucide-react-native';
+import { ArrowLeft, Camera, Heart, MessageCircle, Eye, Clock, Send } from 'lucide-react-native';
 import WaffleMessage from '@/components/WaffleMessage';
 import WednesdayNudge from '@/components/WednesdayNudge';
+import { useRealtime } from '@/hooks/useRealtime';
 
 export default function ChatScreen() {
   const { groupId } = useLocalSearchParams<{ groupId: string }>();
@@ -26,13 +27,19 @@ export default function ChatScreen() {
     groups, 
     messages, 
     currentUser,
+    loadGroupMessages,
+    isLoading,
     likeMessage,
     addReaction,
     markMessageViewed,
+    addMessage,
   } = useWaffleStore();
 
   const [showNudge, setShowNudge] = useState(false);
   const [messageText, setMessageText] = useState('');
+
+  // Real-time hook for this specific group
+  const { subscribeToGroup, unsubscribeFromGroup } = useRealtime();
 
   const group = groups.find(g => g.id === groupId);
   const groupMessages = messages.filter(m => m.groupId === groupId).sort(
@@ -46,6 +53,21 @@ export default function ChatScreen() {
   const missingMembers = group?.members
     .filter(m => !m.hasPostedThisWeek && m.id !== currentUser?.id)
     .map(m => m.name) || [];
+
+  // Load messages when group changes
+  useEffect(() => {
+    if (groupId) {
+      loadGroupMessages(groupId);
+      // Subscribe to real-time updates for this group
+      subscribeToGroup(groupId);
+    }
+
+    return () => {
+      if (groupId) {
+        unsubscribeFromGroup(groupId);
+      }
+    };
+  }, [groupId]); // Only depend on groupId, not the functions
 
   useEffect(() => {
     if (isWednesday && !userHasPostedThisWeek && groupMessages.length > 0) {
@@ -85,6 +107,29 @@ export default function ChatScreen() {
     alert('AI Catch-up Recap: This waffle shows a cozy coffee moment at the recommended shop. The atmosphere looks perfect for some quality coffee time, and it seems like the group\'s suggestion was a hit!');
   };
 
+  const handleSendMessage = async () => {
+    if (!messageText.trim() || !currentUser || !groupId) return;
+
+    try {
+      await addMessage({
+        userId: currentUser.id,
+        userName: currentUser.name,
+        userAvatar: currentUser.avatar,
+        content: {
+          type: 'text',
+          text: messageText.trim(),
+        },
+        caption: messageText.trim(),
+        retentionType: '7-day',
+        groupId: groupId,
+      });
+      
+      setMessageText(''); // Clear input after sending
+    } catch (error) {
+      console.error('Failed to send message:', error);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView 
@@ -121,7 +166,7 @@ export default function ChatScreen() {
                   !member.hasPostedThisWeek && styles.memberAvatarPending
                 ]}
               >
-                <Image source={{ uri: member.avatar }} style={styles.headerMemberAvatarImage} />
+                <Image source={{ uri: member.avatar || 'https://via.placeholder.com/24' }} style={styles.headerMemberAvatarImage} />
                 {!member.hasPostedThisWeek && member.id !== currentUser?.id && (
                   <View style={styles.pendingIndicator} />
                 )}
@@ -137,7 +182,11 @@ export default function ChatScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.messagesContent}
         >
-          {groupMessages.length === 0 ? (
+          {isLoading && groupMessages.length === 0 ? (
+            <View style={styles.loadingChat}>
+              <Text style={styles.loadingText}>Loading waffles...</Text>
+            </View>
+          ) : groupMessages.length === 0 ? (
             <View style={styles.emptyChat}>
               <View style={styles.emptyIconContainer}>
                 <Camera size={48} color="#D1D5DB" />
@@ -182,12 +231,15 @@ export default function ChatScreen() {
             placeholder="Send a message..."
             value={messageText}
             onChangeText={setMessageText}
-            multiline
             maxLength={200}
           />
           
-          <TouchableOpacity style={styles.emojiButton}>
-            <Smile size={24} color="#9CA3AF" />
+          <TouchableOpacity 
+            style={[styles.sendButton, !messageText.trim() && styles.sendButtonDisabled]}
+            onPress={handleSendMessage}
+            disabled={!messageText.trim()}
+          >
+            <Send size={20} color={messageText.trim() ? "#FFFFFF" : "#9CA3AF"} />
           </TouchableOpacity>
         </View>
 
@@ -279,6 +331,17 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 32,
   },
+  loadingChat: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  loadingText: {
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
+    color: '#9CA3AF',
+  },
   emptyChat: {
     flex: 1,
     justifyContent: 'center',
@@ -344,20 +407,25 @@ const styles = StyleSheet.create({
   },
   textInput: {
     flex: 1,
+    height: 40,
     borderWidth: 1,
     borderColor: '#E5E7EB',
     borderRadius: 20,
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 8,
     fontSize: 16,
     fontFamily: 'Inter-Regular',
-    maxHeight: 100,
     marginRight: 12,
   },
-  emojiButton: {
+  sendButton: {
     width: 40,
     height: 40,
+    borderRadius: 20,
+    backgroundColor: '#F97316',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  sendButtonDisabled: {
+    backgroundColor: '#F3F4F6',
   },
 });

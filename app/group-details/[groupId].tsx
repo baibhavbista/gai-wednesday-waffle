@@ -28,14 +28,49 @@ import {
 export default function GroupDetailsScreen() {
   const { groupId } = useLocalSearchParams<{ groupId: string }>();
   const router = useRouter();
-  const { groups, currentUser } = useWaffleStore();
+  const { groups, currentUser, isLoading } = useWaffleStore();
   const [copiedCode, setCopiedCode] = useState(false);
 
   const group = groups.find(g => g.id === groupId);
 
+  // Show loading state while groups are being fetched
+  if (isLoading && groups.length === 0) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity 
+            style={styles.headerButton}
+            onPress={() => router.back()}
+          >
+            <ArrowLeft size={24} color="#374151" />
+          </TouchableOpacity>
+          
+          <Text style={styles.headerTitle}>Group Details</Text>
+          
+          <View style={styles.headerButton} />
+        </View>
+        <View style={styles.errorContainer}>
+          <Text style={styles.loadingText}>Loading group details...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   if (!group) {
     return (
       <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity 
+            style={styles.headerButton}
+            onPress={() => router.back()}
+          >
+            <ArrowLeft size={24} color="#374151" />
+          </TouchableOpacity>
+          
+          <Text style={styles.headerTitle}>Group Details</Text>
+          
+          <View style={styles.headerButton} />
+        </View>
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>Group not found</Text>
           <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
@@ -176,7 +211,7 @@ export default function GroupDetailsScreen() {
               </Text>
               {activeMembers.map((member) => (
                 <View key={member.id} style={styles.memberItem}>
-                  <Image source={{ uri: member.avatar }} style={styles.memberAvatar} />
+                  <Image source={{ uri: member.avatar || 'https://via.placeholder.com/44' }} style={styles.memberAvatar} />
                   <View style={styles.memberInfo}>
                     <View style={styles.memberNameRow}>
                       <Text style={styles.memberName}>{member.name}</Text>
@@ -205,7 +240,7 @@ export default function GroupDetailsScreen() {
               </Text>
               {pendingMembers.map((member) => (
                 <View key={member.id} style={styles.memberItem}>
-                  <Image source={{ uri: member.avatar }} style={[styles.memberAvatar, styles.memberAvatarPending]} />
+                  <Image source={{ uri: member.avatar || 'https://via.placeholder.com/44' }} style={[styles.memberAvatar, styles.memberAvatarPending]} />
                   <View style={styles.memberInfo}>
                     <View style={styles.memberNameRow}>
                       <Text style={[styles.memberName, styles.memberNamePending]}>{member.name}</Text>
@@ -501,5 +536,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Inter-SemiBold',
     color: '#FFFFFF',
+  },
+  loadingText: {
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
+    color: '#6B7280',
   },
 }); 

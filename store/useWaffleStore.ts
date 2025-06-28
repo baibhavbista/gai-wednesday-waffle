@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { groupsService, wafflesService } from '@/lib/database-service';
 
 export interface WaffleMessage {
   id: string;
@@ -6,8 +7,9 @@ export interface WaffleMessage {
   userName: string;
   userAvatar: string;
   content: {
-    type: 'photo' | 'video';
-    url: string;
+    type: 'photo' | 'video' | 'text';
+    url?: string;
+    text?: string;
     thumbnail?: string;
   };
   caption: string;
@@ -52,9 +54,10 @@ export interface WaffleState {
   
   // Actions
   setCurrentUser: (user: WaffleState['currentUser']) => void;
+  loadUserGroups: () => Promise<void>; // NEW: Real data loading
   setGroups: (groups: Group[]) => void;
   setCurrentGroup: (groupId: string) => void;
-  addMessage: (message: Omit<WaffleMessage, 'id' | 'createdAt' | 'likes' | 'hasLiked' | 'viewed' | 'reactions'>) => void;
+  addMessage: (message: Omit<WaffleMessage, 'id' | 'createdAt' | 'expiresAt' | 'likes' | 'hasLiked' | 'viewed' | 'reactions'>) => Promise<void>;
   likeMessage: (messageId: string) => void;
   addReaction: (messageId: string, emoji: string) => void;
   markMessageViewed: (messageId: string) => void;
@@ -62,12 +65,31 @@ export interface WaffleState {
   createGroup: (name: string) => Promise<Group>;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
+  clearData: () => void; // NEW: Clear data on logout
   
   // Real-time actions
   addWaffle: (waffle: WaffleMessage) => void;
   updateWaffle: (waffleId: string, updates: Partial<WaffleMessage>) => void;
   removeWaffle: (waffleId: string) => void;
   updateGroupMemberCount: (groupId: string, delta: number) => void;
+  
+  // Enhanced real-time group actions
+  addGroupRealtime: (group: Group) => void;
+  updateGroupRealtime: (groupId: string, updates: Partial<Group>) => void;
+  removeGroupRealtime: (groupId: string) => void;
+  updateGroupMembers: (groupId: string, members: Group['members']) => void;
+  
+  // Optimistic updates
+  addOptimisticGroup: (group: Group) => string; // Returns temp ID
+  removeOptimisticGroup: (tempId: string) => void;
+  replaceOptimisticGroup: (tempId: string, realGroup: Group) => void;
+  
+  // Real waffle/message management
+  loadGroupMessages: (groupId: string) => Promise<void>;
+  setGroupMessages: (groupId: string, messages: WaffleMessage[]) => void;
+  addOptimisticMessage: (message: Omit<WaffleMessage, 'id' | 'createdAt' | 'expiresAt' | 'likes' | 'hasLiked' | 'viewed' | 'reactions'>) => string;
+  removeOptimisticMessage: (tempId: string) => void;
+  replaceOptimisticMessage: (tempId: string, realMessage: WaffleMessage) => void;
 }
 
 // Mock data
@@ -203,43 +225,233 @@ const mockGroups: Group[] = [
 ];
 
 export const useWaffleStore = create<WaffleState>((set, get) => ({
-  currentUser: mockUser,
-  groups: mockGroups,
-  currentGroupId: 'group-1',
-  messages: mockMessages,
+  currentUser: null, // Will be set through authentication
+  groups: [], // Will be loaded from API when user is authenticated
+  currentGroupId: null,
+  messages: [], // Will be loaded per group
   isLoading: false,
   error: null,
 
   setCurrentUser: (user) => set({ currentUser: user }),
+
+  // NEW: Load real groups from Supabase
+  loadUserGroups: async () => {
+    const currentUser = get().currentUser;
+    if (!currentUser) {
+      console.log('❌ Cannot load groups: No user authenticated');
+      return;
+    }
+
+    try {
+      set({ isLoading: true, error: null });
+      
+      const { data: userGroups, error } = await groupsService.getUserGroups();
+      
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      if (userGroups) {
+        // Transform API format to store format
+        const transformedGroups: Group[] = await Promise.all(
+          userGroups.map(async (apiGroup) => {
+            // Get group members for this group
+            const { data: groupMembers } = await groupsService.getGroupMembers(apiGroup.id);
+            
+            // Get latest waffle for this group
+            const { data: waffles } = await wafflesService.getForGroup(apiGroup.id);
+            const latestWaffle = waffles?.[0];
+
+            return {
+              id: apiGroup.id,
+              name: apiGroup.name,
+              inviteCode: apiGroup.invite_code,
+              createdAt: new Date(apiGroup.created_at),
+              unreadCount: 0, // TODO: Calculate based on user's last read
+              lastMessage: latestWaffle ? {
+                id: latestWaffle.id!,
+                userId: latestWaffle.user_id,
+                userName: latestWaffle.user_name,
+                userAvatar: latestWaffle.user_avatar || '',
+                content: {
+                  type: latestWaffle.content_type as 'photo' | 'video' | 'text',
+                  url: latestWaffle.content_type === 'text' ? undefined : latestWaffle.content_url || '',
+                  text: latestWaffle.content_type === 'text' ? latestWaffle.caption || '' : undefined,
+                },
+                caption: latestWaffle.caption || '',
+                createdAt: new Date(latestWaffle.created_at),
+                expiresAt: new Date(latestWaffle.expires_at || latestWaffle.created_at),
+                retentionType: latestWaffle.retention_type as 'view-once' | '7-day' | 'keep-forever',
+                groupId: latestWaffle.group_id!,
+                viewed: false, // TODO: Track viewed status
+                likes: 0, // TODO: Implement likes
+                hasLiked: false,
+                reactions: {},
+              } : undefined,
+              members: groupMembers?.map(member => ({
+                id: member.user_id,
+                name: member.user_name,
+                avatar: member.user_avatar || '',
+                lastActive: new Date(member.joined_at), // Placeholder
+                hasPostedThisWeek: false, // TODO: Calculate based on recent waffles
+              })) || [],
+            };
+          })
+        );
+
+        set({ groups: transformedGroups });
+        console.log('✅ Loaded', transformedGroups.length, 'groups from Supabase');
+      }
+    } catch (error) {
+      let errorMessage = 'Failed to load groups';
+      
+      // Check for network connectivity issues
+      if (error instanceof Error) {
+        if (error.message.includes('Network request failed') || 
+            error.message.includes('fetch')) {
+          errorMessage = 'NETWORK_ERROR';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
+      set({ error: errorMessage });
+      console.error('❌ Error loading groups:', error);
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  // NEW: Clear all data (for logout)
+  clearData: () => set({
+    groups: [],
+    currentGroupId: null,
+    messages: [],
+    error: null,
+  }),
   
   setGroups: (groups) => set({ groups }),
   
   setCurrentGroup: (groupId) => set({ currentGroupId: groupId }),
   
-  addMessage: (messageData) => {
-    const newMessage: WaffleMessage = {
-      ...messageData,
-      id: `msg-${Date.now()}`,
-      createdAt: new Date(),
-      likes: 0,
-      hasLiked: false,
-      viewed: false,
-      reactions: {},
-      expiresAt: messageData.retentionType === 'view-once' 
-        ? new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
-        : messageData.retentionType === '7-day'
-        ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
-        : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year for "keep forever"
-    };
-    
-    set((state) => ({
-      messages: [newMessage, ...state.messages],
-      groups: state.groups.map(group => 
-        group.id === messageData.groupId 
-          ? { ...group, lastMessage: newMessage, unreadCount: group.unreadCount + 1 }
-          : group
-      ),
-    }));
+  addMessage: async (messageData) => {
+    const currentUser = get().currentUser;
+    if (!currentUser) {
+      throw new Error('User not authenticated');
+    }
+
+    console.log('🏪 === STORE addMessage START ===');
+    console.log('📦 Received messageData:');
+    console.log('   - userId:', messageData.userId);
+    console.log('   - userName:', messageData.userName);
+    console.log('   - content.type:', messageData.content.type);
+    console.log('   - content.url:', messageData.content.url ? 'present' : 'missing');
+    console.log('   - caption:', messageData.caption);
+    console.log('   - retentionType (input):', messageData.retentionType);
+    console.log('   - groupId:', messageData.groupId);
+
+    // Convert retention type for database
+    const dbRetentionType: 'view_once' | '7_days' | 'forever' = 
+      messageData.retentionType === 'view-once' ? 'view_once' : 
+      messageData.retentionType === '7-day' ? '7_days' : 'forever';
+    console.log('🔄 Retention type transformation:');
+    console.log('   - Frontend:', messageData.retentionType);
+    console.log('   - Database:', dbRetentionType);
+
+    // Add optimistic message immediately
+    const tempId = get().addOptimisticMessage(messageData);
+    console.log('⚡ Added optimistic message with tempId:', tempId);
+
+    try {
+      const createData = {
+        group_id: messageData.groupId,
+        content_url: messageData.content.type === 'text' ? null : messageData.content.url,
+        content_type: messageData.content.type,
+        caption: messageData.caption,
+        retention_type: dbRetentionType,
+      };
+
+      console.log('📤 Sending to database service:');
+      console.log('   - group_id:', createData.group_id);
+      console.log('   - content_url:', createData.content_url ? 'present' : 'null');
+      console.log('   - content_type:', createData.content_type);
+      console.log('   - caption:', createData.caption);
+      console.log('   - retention_type (DB format):', createData.retention_type);
+
+      // Post to database
+      const { data: newWaffle, error } = await wafflesService.create(createData);
+
+      if (error) {
+        console.error('❌ Database error:', error);
+        throw new Error(error.message);
+      }
+
+      if (newWaffle) {
+        console.log('📩 Received from database:');
+        console.log('   - id:', newWaffle.id);
+        console.log('   - user_id:', newWaffle.user_id);
+        console.log('   - group_id:', newWaffle.group_id);
+        console.log('   - content_type:', newWaffle.content_type);
+        console.log('   - content_url:', newWaffle.content_url ? 'present' : 'null');
+        console.log('   - caption:', newWaffle.caption);
+        console.log('   - retention_type (from DB):', newWaffle.retention_type);
+        console.log('   - created_at:', newWaffle.created_at);
+        console.log('   - expires_at:', newWaffle.expires_at);
+
+        // Transform to store format
+        const realMessage: WaffleMessage = {
+          id: newWaffle.id,
+          userId: newWaffle.user_id,
+          userName: currentUser.name,
+          userAvatar: currentUser.avatar,
+          content: messageData.content,
+          caption: messageData.caption,
+          createdAt: new Date(newWaffle.created_at),
+          expiresAt: newWaffle.expires_at ? new Date(newWaffle.expires_at) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          retentionType: messageData.retentionType, // Keep original frontend format
+          groupId: messageData.groupId,
+          viewed: false,
+          likes: 0,
+          hasLiked: false,
+          reactions: {},
+        };
+
+        console.log('✅ Final message object for store:');
+        console.log('   - id:', realMessage.id);
+        console.log('   - userId:', realMessage.userId);
+        console.log('   - userName:', realMessage.userName);
+        console.log('   - content.type:', realMessage.content.type);
+        console.log('   - caption:', realMessage.caption);
+        console.log('   - retentionType (final):', realMessage.retentionType);
+        console.log('   - groupId:', realMessage.groupId);
+        console.log('   - createdAt:', realMessage.createdAt);
+        console.log('   - expiresAt:', realMessage.expiresAt);
+
+        // Replace optimistic with real message
+        get().replaceOptimisticMessage(tempId, realMessage);
+
+        // Update group's last message
+        set((state) => ({
+          groups: state.groups.map(group => 
+            group.id === messageData.groupId 
+              ? { ...group, lastMessage: realMessage }
+              : group
+          ),
+        }));
+
+        console.log('✅ Posted waffle successfully:', newWaffle.id);
+        console.log('🏪 === STORE addMessage END ===');
+      }
+    } catch (error) {
+      // Remove optimistic message on error
+      get().removeOptimisticMessage(tempId);
+      
+      const errorMessage = error instanceof Error ? error.message : 'Failed to post waffle';
+      set({ error: errorMessage });
+      console.error('❌ Error posting waffle:', error);
+      console.log('🏪 === STORE addMessage FAILED ===');
+      throw error;
+    }
   },
   
   likeMessage: (messageId) => {
@@ -284,45 +496,150 @@ export const useWaffleStore = create<WaffleState>((set, get) => ({
   },
   
   joinGroup: async (inviteCode) => {
-    set({ isLoading: true, error: null });
-    
-    // Mock API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    console.log('Joining group with code:', inviteCode);
-    
-    set({ isLoading: false });
+    const currentUser = get().currentUser;
+    if (!currentUser) {
+      throw new Error('User not authenticated');
+    }
+
+    // Create optimistic "joining" group for instant feedback
+    const optimisticGroup: Group = {
+      id: 'temp-joining',
+      name: `Joining ${inviteCode}...`,
+      inviteCode,
+      createdAt: new Date(),
+      unreadCount: 0,
+      members: [{
+        id: currentUser.id,
+        name: currentUser.name,
+        avatar: currentUser.avatar,
+        lastActive: new Date(),
+        hasPostedThisWeek: false,
+      }],
+    };
+
+    const tempId = get().addOptimisticGroup(optimisticGroup);
+
+    try {
+      set({ isLoading: true, error: null });
+      
+      const { data: groupId, error } = await groupsService.joinByInviteCode(inviteCode);
+      
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      if (groupId) {
+        console.log('✅ Joined group:', groupId);
+        
+        // Remove the optimistic group - real group will be added via real-time
+        get().removeOptimisticGroup(tempId);
+        
+        // Trigger a refresh to get the actual group data
+        await get().loadUserGroups();
+      }
+    } catch (error) {
+      // Remove optimistic group on error
+      get().removeOptimisticGroup(tempId);
+      
+      let errorMessage = 'Failed to join group';
+      
+      // Check for network connectivity issues
+      if (error instanceof Error) {
+        if (error.message.includes('Network request failed') || 
+            error.message.includes('fetch')) {
+          errorMessage = 'NETWORK_ERROR';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
+      set({ error: errorMessage });
+      throw error;
+    } finally {
+      set({ isLoading: false });
+    }
   },
   
   createGroup: async (name) => {
-    set({ isLoading: true, error: null });
-    
-    // Mock API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    const newGroup: Group = {
-      id: `group-${Date.now()}`,
+    const currentUser = get().currentUser;
+    if (!currentUser) {
+      throw new Error('User not authenticated');
+    }
+
+    // Create optimistic group for instant UI feedback
+    const optimisticGroup: Group = {
+      id: 'temp-creating',
       name,
+      inviteCode: 'CREATING...',
       createdAt: new Date(),
-      inviteCode: Math.random().toString(36).substring(2, 8).toUpperCase(),
       unreadCount: 0,
-      members: [
-        {
-          id: get().currentUser?.id || 'user-1',
-          name: get().currentUser?.name || 'Unknown',
-          avatar: get().currentUser?.avatar || '',
-          lastActive: new Date(),
-          hasPostedThisWeek: false,
-        },
-      ],
+      members: [{
+        id: currentUser.id,
+        name: currentUser.name,
+        avatar: currentUser.avatar,
+        lastActive: new Date(),
+        hasPostedThisWeek: false,
+      }],
     };
+
+    const tempId = get().addOptimisticGroup(optimisticGroup);
+
+    try {
+      set({ isLoading: true, error: null });
+      
+      const { data: newGroupData, error } = await groupsService.create({ name });
+      
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      if (newGroupData) {
+        console.log('✅ Created group:', newGroupData);
+        
+        // Transform to store format
+        const realGroup: Group = {
+          id: newGroupData.id,
+          name: newGroupData.name,
+          inviteCode: newGroupData.invite_code,
+          createdAt: new Date(newGroupData.created_at),
+          unreadCount: 0,
+          members: [{
+            id: currentUser.id,
+            name: currentUser.name,
+            avatar: currentUser.avatar,
+            lastActive: new Date(),
+            hasPostedThisWeek: false,
+          }],
+        };
+        
+        // Replace optimistic with real group
+        get().replaceOptimisticGroup(tempId, realGroup);
+        
+        return realGroup;
+      }
+    } catch (error) {
+      // Remove optimistic group on error
+      get().removeOptimisticGroup(tempId);
+      
+      let errorMessage = 'Failed to create group';
+      
+      // Check for network connectivity issues
+      if (error instanceof Error) {
+        if (error.message.includes('Network request failed') || 
+            error.message.includes('fetch')) {
+          errorMessage = 'NETWORK_ERROR';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
+      set({ error: errorMessage });
+      throw error;
+    } finally {
+      set({ isLoading: false });
+    }
     
-    set((state) => ({
-      groups: [...state.groups, newGroup],
-      isLoading: false,
-    }));
-    
-    return newGroup;
+    throw new Error('Failed to create group');
   },
   
   setLoading: (loading) => set({ isLoading: loading }),
@@ -368,5 +685,198 @@ export const useWaffleStore = create<WaffleState>((set, get) => ({
           : group
       ),
     }));
+  },
+
+  // Enhanced real-time group actions
+  addGroupRealtime: (group) => {
+    set((state) => {
+      // Check if group already exists to avoid duplicates
+      const exists = state.groups.some(g => g.id === group.id);
+      if (exists) return state;
+      
+      return {
+        groups: [...state.groups, group],
+      };
+    });
+  },
+
+  updateGroupRealtime: (groupId, updates) => {
+    set((state) => ({
+      groups: state.groups.map(group => 
+        group.id === groupId 
+          ? { ...group, ...updates }
+          : group
+      ),
+    }));
+  },
+
+  removeGroupRealtime: (groupId) => {
+    set((state) => ({
+      groups: state.groups.filter(group => group.id !== groupId),
+      // Clear current group if it was removed
+      currentGroupId: state.currentGroupId === groupId ? null : state.currentGroupId,
+    }));
+  },
+
+  updateGroupMembers: (groupId, members) => {
+    set((state) => ({
+      groups: state.groups.map(group => 
+        group.id === groupId 
+          ? { ...group, members }
+          : group
+      ),
+    }));
+  },
+
+  // Optimistic updates for instant UI feedback
+  addOptimisticGroup: (group) => {
+    const tempId = `temp-group-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const optimisticGroup = { ...group, id: tempId };
+    
+    set((state) => ({
+      groups: [...state.groups, optimisticGroup],
+    }));
+    
+    if (__DEV__) console.log('⚡ Added optimistic group:', tempId);
+    return tempId;
+  },
+
+  removeOptimisticGroup: (tempId) => {
+    set((state) => ({
+      groups: state.groups.filter(group => group.id !== tempId),
+    }));
+    if (__DEV__) console.log('❌ Removed optimistic group:', tempId);
+  },
+
+  replaceOptimisticGroup: (tempId, realGroup) => {
+    set((state) => ({
+      groups: state.groups.map(group => 
+        group.id === tempId ? realGroup : group
+      ),
+    }));
+    if (__DEV__) console.log('✅ Replaced optimistic group with real:', tempId, '→', realGroup.id);
+  },
+
+  // Real waffle/message management
+  loadGroupMessages: async (groupId) => {
+    const state = get();
+    
+    // Don't reload if already loading for this group
+    if (state.isLoading) {
+      if (__DEV__) console.log('⏳ Already loading messages, skipping...');
+      return;
+    }
+
+    // Check if we already have messages for this group
+    const existingMessages = state.messages.filter(m => m.groupId === groupId);
+    if (existingMessages.length > 0) {
+      if (__DEV__) console.log('📋 Messages already loaded for group:', groupId);
+      return;
+    }
+
+    try {
+      set({ isLoading: true, error: null });
+      
+      const { data: waffles, error } = await wafflesService.getForGroup(groupId);
+      
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      if (waffles) {
+        // Transform API format to store format
+        const transformedMessages: WaffleMessage[] = waffles.map(waffle => ({
+          id: waffle.id!,
+          userId: waffle.user_id,
+          userName: waffle.user_name,
+          userAvatar: waffle.user_avatar || '',
+          content: {
+            type: waffle.content_type as 'photo' | 'video' | 'text',
+            url: waffle.content_type === 'text' ? undefined : waffle.content_url || '',
+            text: waffle.content_type === 'text' ? waffle.caption || '' : undefined,
+          },
+          caption: waffle.caption || '',
+          createdAt: new Date(waffle.created_at),
+          expiresAt: waffle.expires_at ? new Date(waffle.expires_at) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          retentionType: waffle.retention_type as 'view-once' | '7-day' | 'keep-forever',
+          groupId: waffle.group_id!,
+          viewed: false, // TODO: Track viewed status per user
+          likes: 0, // TODO: Implement likes system
+          hasLiked: false,
+          reactions: {}, // TODO: Implement reactions
+        }));
+
+        // Replace messages for this group only
+        set((state) => ({
+          messages: [
+            // Keep messages from other groups
+            ...state.messages.filter(m => m.groupId !== groupId),
+            // Add new messages for this group
+            ...transformedMessages
+          ],
+        }));
+
+        console.log('✅ Loaded', transformedMessages.length, 'messages for group:', groupId);
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to load messages';
+      set({ error: errorMessage });
+      console.error('❌ Error loading messages:', error);
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  setGroupMessages: (groupId, messages) => {
+    set((state) => ({
+      messages: [
+        // Keep messages from other groups
+        ...state.messages.filter(m => m.groupId !== groupId),
+        // Set new messages for this group
+        ...messages
+      ],
+    }));
+  },
+
+  addOptimisticMessage: (messageData) => {
+    const tempId = `temp-msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    const optimisticMessage: WaffleMessage = {
+      ...messageData,
+      id: tempId,
+      createdAt: new Date(),
+      expiresAt: messageData.retentionType === 'view-once' 
+        ? new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
+        : messageData.retentionType === '7-day'
+        ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
+        : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year for "keep forever"
+      likes: 0,
+      hasLiked: false,
+      viewed: false,
+      reactions: {},
+    };
+    
+    set((state) => ({
+      messages: [optimisticMessage, ...state.messages],
+    }));
+    
+    if (__DEV__) console.log('⚡ Added optimistic message:', tempId);
+    return tempId;
+  },
+
+  removeOptimisticMessage: (tempId) => {
+    set((state) => ({
+      messages: state.messages.filter(message => message.id !== tempId),
+    }));
+    if (__DEV__) console.log('❌ Removed optimistic message:', tempId);
+  },
+
+  replaceOptimisticMessage: (tempId, realMessage) => {
+    set((state) => ({
+      messages: state.messages.map(message => 
+        message.id === tempId ? realMessage : message
+      ),
+    }));
+    if (__DEV__) console.log('✅ Replaced optimistic message with real:', tempId, '→', realMessage.id);
   },
 }));

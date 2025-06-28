@@ -8,12 +8,12 @@ import {
   Dimensions,
 } from 'react-native';
 import { Heart, MessageCircle, Clock, Eye } from 'lucide-react-native';
-import { Waffle } from '@/store/useWaffleStore';
+import { WaffleMessage } from '@/store/useWaffleStore';
 
 const { width } = Dimensions.get('window');
 
 interface WaffleCardProps {
-  waffle: Waffle;
+  waffle: WaffleMessage;
   onLike: (waffleId: string) => void;
   onViewRecap: (waffleId: string) => void;
 }
@@ -46,7 +46,7 @@ export default function WaffleCard({ waffle, onLike, onViewRecap }: WaffleCardPr
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.userInfo}>
-          <Image source={{ uri: waffle.userAvatar }} style={styles.avatar} />
+          <Image source={{ uri: waffle.userAvatar || 'https://via.placeholder.com/40' }} style={styles.avatar} />
           <View>
             <Text style={styles.userName}>{waffle.userName}</Text>
             <Text style={styles.timeAgo}>{getTimeAgo(waffle.createdAt)}</Text>
@@ -59,22 +59,34 @@ export default function WaffleCard({ waffle, onLike, onViewRecap }: WaffleCardPr
       </View>
 
       {/* Content */}
-      <TouchableOpacity 
-        style={styles.contentContainer}
-        onPress={() => waffle.retentionType === 'view-once' && !waffle.viewed && setShowRecap(!showRecap)}
-      >
-        {waffle.retentionType === 'view-once' && !waffle.viewed ? (
-          <View style={styles.viewOnceOverlay}>
-            <Eye size={32} color="#FFFFFF" />
-            <Text style={styles.viewOnceText}>Tap to view</Text>
-          </View>
-        ) : (
-          <Image source={{ uri: waffle.content.url }} style={styles.contentImage} />
-        )}
-      </TouchableOpacity>
+      {waffle.content.type === 'text' ? (
+        // Text-only waffle layout
+        <View style={styles.textContentContainer}>
+          <Text style={styles.textContent}>{waffle.caption}</Text>
+        </View>
+      ) : (
+        // Media waffle layout
+        <>
+          <TouchableOpacity 
+            style={styles.contentContainer}
+            onPress={() => waffle.retentionType === 'view-once' && !waffle.viewed && setShowRecap(!showRecap)}
+          >
+            {waffle.retentionType === 'view-once' && !waffle.viewed ? (
+              <View style={styles.viewOnceOverlay}>
+                <Eye size={32} color="#FFFFFF" />
+                <Text style={styles.viewOnceText}>Tap to view</Text>
+              </View>
+            ) : (
+              <Image source={{ uri: waffle.content.url || 'https://via.placeholder.com/300x200' }} style={styles.contentImage} />
+            )}
+          </TouchableOpacity>
 
-      {/* Caption */}
-      <Text style={styles.caption}>{waffle.caption}</Text>
+          {/* Caption for media waffles */}
+          {waffle.caption && (
+            <Text style={styles.caption}>{waffle.caption}</Text>
+          )}
+        </>
+      )}
 
       {/* Actions */}
       <View style={styles.actions}>
@@ -178,6 +190,20 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Medium',
     color: '#9CA3AF',
     marginLeft: 4,
+  },
+  textContentContainer: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  textContent: {
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
+    color: '#1F2937',
+    lineHeight: 24,
   },
   contentContainer: {
     borderRadius: 12,

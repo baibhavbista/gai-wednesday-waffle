@@ -8,19 +8,23 @@ import {
   TouchableOpacity,
   Image,
   TextInput,
+  ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { useWaffleStore } from '@/store/useWaffleStore';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Search, Check } from 'lucide-react-native';
 
 export default function GroupSelectionScreen() {
-  const { groups, addMessage, currentUser } = useWaffleStore();
+  const { groups, addMessage, currentUser, isLoading } = useWaffleStore();
   const router = useRouter();
   const params = useLocalSearchParams();
   const [selectedGroups, setSelectedGroups] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSending, setIsSending] = useState(false);
 
   const videoUri = params.videoUri as string;
+  const retentionType = (params.retentionType as 'view-once' | '7-day' | 'keep-forever') || '7-day';
 
   const filteredGroups = groups.filter(group =>
     group.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -37,29 +41,59 @@ export default function GroupSelectionScreen() {
   };
 
   const sendToSelectedGroups = async () => {
-    if (!currentUser || !videoUri || selectedGroups.size === 0) return;
+    if (!currentUser || !videoUri || selectedGroups.size === 0 || isSending) return;
+
+    setIsSending(true);
+
+    console.log('🎯 === GROUP SELECTION WAFFLE CREATION START ===');
+    console.log('📹 Video URI:', videoUri);
+    console.log('👤 Current User:', currentUser.name);
+    console.log('📊 Retention Type (from params):', params.retentionType);
+    console.log('📊 Retention Type (parsed):', retentionType);
+    console.log('🎯 Selected Groups:', Array.from(selectedGroups));
+    console.log('📊 Selected Groups Count:', selectedGroups.size);
 
     try {
       // Send to all selected groups
       for (const groupId of selectedGroups) {
-        addMessage({
+        const messageData = {
           userId: currentUser.id,
           userName: currentUser.name,
           userAvatar: currentUser.avatar,
           content: {
-            type: 'video',
+            type: 'video' as const,
             url: videoUri,
           },
           caption: 'Check out my waffle! 🧇',
-          retentionType: '7-day',
+          retentionType: retentionType,
           groupId: groupId,
-        });
+        };
+
+        console.log(`📝 Creating waffle for group ${groupId}:`);
+        console.log('   - userId:', messageData.userId);
+        console.log('   - userName:', messageData.userName);
+        console.log('   - content.type:', messageData.content.type);
+        console.log('   - content.url:', messageData.content.url ? 'present' : 'missing');
+        console.log('   - caption:', messageData.caption);
+        console.log('   - retentionType:', messageData.retentionType);
+        console.log('   - groupId:', messageData.groupId);
+
+        await addMessage(messageData);
+        console.log(`✅ Waffle created successfully for group ${groupId}`);
       }
 
-      // Navigate back to main screen
+      console.log('✅ All waffles created successfully');
+      console.log('🎯 === GROUP SELECTION WAFFLE CREATION END ===');
+
+      // Navigate back to main screen after successful completion
       router.push('/(tabs)');
     } catch (error) {
-      console.error('Error sending video:', error);
+      console.error('❌ Group selection waffle creation failed:', error);
+      console.log('🎯 === GROUP SELECTION WAFFLE CREATION FAILED ===');
+      // Show error to user but don't navigate away
+      alert('Failed to send waffle. Please try again.');
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -82,16 +116,16 @@ export default function GroupSelectionScreen() {
         <TouchableOpacity 
           style={[
             styles.sendButton,
-            selectedGroups.size === 0 && styles.sendButtonDisabled
+            (selectedGroups.size === 0 || isSending) && styles.sendButtonDisabled
           ]}
           onPress={sendToSelectedGroups}
-          disabled={selectedGroups.size === 0}
+          disabled={selectedGroups.size === 0 || isSending}
         >
           <Text style={[
             styles.sendButtonText,
-            selectedGroups.size === 0 && styles.sendButtonTextDisabled
+            (selectedGroups.size === 0 || isSending) && styles.sendButtonTextDisabled
           ]}>
-            Send
+            {isSending ? 'Sending...' : 'Send'}
           </Text>
         </TouchableOpacity>
       </View>
@@ -117,43 +151,80 @@ export default function GroupSelectionScreen() {
 
       {/* Groups List */}
       <ScrollView style={styles.groupsList} showsVerticalScrollIndicator={false}>
-        {filteredGroups.map((group) => {
-          const isSelected = selectedGroups.has(group.id);
-          
-          return (
-            <TouchableOpacity
-              key={group.id}
-              style={styles.groupItem}
-              onPress={() => toggleGroupSelection(group.id)}
-            >
-              <View style={styles.groupInfo}>
-                <View style={styles.groupAvatar}>
-                  <Text style={styles.groupAvatarText}>
-                    {group.name.split(' ').map(word => word[0]).join('').slice(0, 2)}
-                  </Text>
+        {isLoading ? (
+          <View style={styles.loadingContainer}>
+            <Text style={styles.loadingText}>Loading groups...</Text>
+          </View>
+        ) : filteredGroups.length === 0 && groups.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyTitle}>No groups yet</Text>
+            <Text style={styles.emptySubtitle}>
+              Create or join a group first to share your video
+            </Text>
+          </View>
+        ) : filteredGroups.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyTitle}>No matching groups</Text>
+            <Text style={styles.emptySubtitle}>
+              Try adjusting your search
+            </Text>
+          </View>
+        ) : (
+          filteredGroups.map((group) => {
+            const isSelected = selectedGroups.has(group.id);
+            
+            return (
+              <TouchableOpacity
+                key={group.id}
+                style={styles.groupItem}
+                onPress={() => toggleGroupSelection(group.id)}
+              >
+                <View style={styles.groupInfo}>
+                  <View style={styles.groupAvatar}>
+                    <Text style={styles.groupAvatarText}>
+                      {group.name.split(' ').map(word => word[0]).join('').slice(0, 2)}
+                    </Text>
+                  </View>
+                  <Text style={styles.groupName}>{group.name}</Text>
                 </View>
-                <Text style={styles.groupName}>{group.name}</Text>
-              </View>
 
-              <View style={[
-                styles.selectionCircle,
-                isSelected && styles.selectionCircleSelected
-              ]}>
-                {isSelected && <Check size={16} color="#FFFFFF" />}
-              </View>
-            </TouchableOpacity>
-          );
-        })}
+                <View style={[
+                  styles.selectionCircle,
+                  isSelected && styles.selectionCircleSelected
+                ]}>
+                  {isSelected && <Check size={16} color="#FFFFFF" />}
+                </View>
+              </TouchableOpacity>
+            );
+          })
+        )}
       </ScrollView>
 
       {/* Bottom Info */}
-      {selectedGroups.size > 0 && (
+      {selectedGroups.size > 0 && !isSending && (
         <View style={styles.bottomInfo}>
           <Text style={styles.bottomInfoText}>
             {selectedGroups.size} group{selectedGroups.size > 1 ? 's' : ''} selected
           </Text>
         </View>
       )}
+
+      {/* Loading Modal */}
+      <Modal
+        visible={isSending}
+        transparent
+        animationType="fade"
+      >
+        <View style={styles.loadingOverlay}>
+          <View style={styles.loadingModal}>
+            <ActivityIndicator size="large" color="#F97316" />
+            <Text style={styles.loadingTitle}>Sending Waffle</Text>
+            <Text style={styles.loadingMessage}>
+              Sharing to {selectedGroups.size} group{selectedGroups.size > 1 ? 's' : ''}...
+            </Text>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -292,6 +363,71 @@ const styles = StyleSheet.create({
   bottomInfoText: {
     fontSize: 14,
     fontFamily: 'Inter-Medium',
+    color: '#6B7280',
+    textAlign: 'center',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  loadingText: {
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
+    color: '#6B7280',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontFamily: 'Poppins-SemiBold',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    color: '#6B7280',
+    textAlign: 'center',
+  },
+  // Loading modal styles
+  loadingOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingModal: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 32,
+    alignItems: 'center',
+    marginHorizontal: 40,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  loadingTitle: {
+    fontSize: 18,
+    fontFamily: 'Poppins-SemiBold',
+    color: '#1F2937',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  loadingMessage: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
     color: '#6B7280',
     textAlign: 'center',
   },

@@ -39,11 +39,20 @@ export default function WaffleMessage({
   const getTimeAgo = (date: Date) => {
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
+    const diffMinutes = Math.floor(diffMs / (1000 * 60));
     const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
     const diffDays = Math.floor(diffHours / 24);
 
     if (diffDays > 0) return `${diffDays}d ago`;
     if (diffHours > 0) return `${diffHours}h ago`;
+    if (diffMinutes >= 2) {
+      // Show actual time for messages 2+ minutes old but less than 1 hour
+      return date.toLocaleTimeString([], { 
+        hour: 'numeric', 
+        minute: '2-digit',
+        hour12: true 
+      });
+    }
     return 'Just now';
   };
 
@@ -63,7 +72,7 @@ export default function WaffleMessage({
       {/* Avatar and Name */}
       {!isOwnMessage && (
         <View style={styles.messageHeader}>
-          <Image source={{ uri: message.userAvatar }} style={styles.avatar} />
+          <Image source={{ uri: message.userAvatar || 'https://via.placeholder.com/32' }} style={styles.avatar} />
           <View style={styles.messageInfo}>
             <Text style={styles.userName}>{message.userName}</Text>
             <Text style={styles.timestamp}>{getTimeAgo(message.createdAt)}</Text>
@@ -79,31 +88,45 @@ export default function WaffleMessage({
 
       {/* Content */}
       <View style={[styles.messageContent, isOwnMessage && styles.ownMessageContent]}>
-        <TouchableOpacity 
-          style={styles.imageContainer}
-          onPress={() => message.retentionType === 'view-once' && !message.viewed && setShowRecap(!showRecap)}
-          onLongPress={() => setShowReactions(true)}
-        >
-          {message.retentionType === 'view-once' && !message.viewed ? (
-            <View style={styles.viewOnceOverlay}>
-              <Eye size={32} color="#FFFFFF" />
-              <Text style={styles.viewOnceText}>Tap to view</Text>
-            </View>
-          ) : (
-            <Image source={{ uri: message.content.url }} style={styles.contentImage} />
-          )}
-          
-          {/* Expiry Badge */}
-          <View style={styles.expiryBadge}>
-            <Clock size={10} color="#FFFFFF" />
-            <Text style={styles.expiryText}>{getExpiryText()}</Text>
+        {message.content.type === 'text' ? (
+          // Text-only message layout
+          <View style={styles.textOnlyContainer}>
+            <Text style={[styles.textContent, isOwnMessage && styles.ownTextContent]}>
+              {message.caption}
+            </Text>
           </View>
-        </TouchableOpacity>
+        ) : (
+          // Media message layout
+          <>
+            <TouchableOpacity 
+              style={styles.imageContainer}
+              onPress={() => message.retentionType === 'view-once' && !message.viewed && setShowRecap(!showRecap)}
+              onLongPress={() => setShowReactions(true)}
+            >
+              {message.retentionType === 'view-once' && !message.viewed ? (
+                <View style={styles.viewOnceOverlay}>
+                  <Eye size={32} color="#FFFFFF" />
+                  <Text style={styles.viewOnceText}>Tap to view</Text>
+                </View>
+              ) : (
+                <Image source={{ uri: message.content.url || 'https://via.placeholder.com/300x160' }} style={styles.contentImage} />
+              )}
+              
+              {/* Expiry Badge */}
+              <View style={styles.expiryBadge}>
+                <Clock size={10} color="#FFFFFF" />
+                <Text style={styles.expiryText}>{getExpiryText()}</Text>
+              </View>
+            </TouchableOpacity>
 
-        {/* Caption */}
-        <Text style={[styles.caption, isOwnMessage && styles.ownCaption]}>
-          {message.caption}
-        </Text>
+            {/* Caption for media messages */}
+            {message.caption && (
+              <Text style={[styles.caption, isOwnMessage && styles.ownCaption]}>
+                {message.caption}
+              </Text>
+            )}
+          </>
+        )}
 
         {/* Reactions */}
         {reactionEntries.length > 0 && (
@@ -132,13 +155,16 @@ export default function WaffleMessage({
             </Text>
           </TouchableOpacity>
 
-          <TouchableOpacity 
-            style={styles.actionButton}
-            onPress={() => onViewRecap(message.id)}
-          >
-            <MessageCircle size={16} color="#9CA3AF" />
-            <Text style={styles.actionText}>Recap</Text>
-          </TouchableOpacity>
+          {/* Only show Recap button for media messages */}
+          {message.content.type !== 'text' && (
+            <TouchableOpacity 
+              style={styles.actionButton}
+              onPress={() => onViewRecap(message.id)}
+            >
+              <MessageCircle size={16} color="#9CA3AF" />
+              <Text style={styles.actionText}>Recap</Text>
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity 
             style={styles.actionButton}
@@ -146,6 +172,14 @@ export default function WaffleMessage({
           >
             <Smile size={16} color="#9CA3AF" />
           </TouchableOpacity>
+
+          {/* Show expiry badge after emoji button for text messages */}
+          {message.content.type === 'text' && (
+            <View style={styles.textExpiryBadgeInline}>
+              <Clock size={12} color="#9CA3AF" />
+              <Text style={styles.textExpiryTextInline}>{getExpiryText()}</Text>
+            </View>
+          )}
         </View>
       </View>
 
@@ -248,6 +282,53 @@ const styles = StyleSheet.create({
   },
   ownMessageContent: {
     backgroundColor: '#FEF7ED',
+  },
+  textOnlyContainer: {
+    position: 'relative',
+  },
+  textContent: {
+    fontSize: 15,
+    fontFamily: 'Inter-Regular',
+    color: '#374151',
+    lineHeight: 22,
+    marginBottom: 8,
+  },
+  ownTextContent: {
+    color: '#1F2937',
+  },
+  textExpiryBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  textExpiryText: {
+    fontSize: 10,
+    fontFamily: 'Inter-Medium',
+    color: '#9CA3AF',
+    marginLeft: 2,
+  },
+  textExpiryBadgeInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginLeft: 12,
+  },
+  textExpiryTextInline: {
+    fontSize: 11,
+    fontFamily: 'Inter-Medium',
+    color: '#9CA3AF',
+    marginLeft: 4,
   },
   imageContainer: {
     borderRadius: 12,

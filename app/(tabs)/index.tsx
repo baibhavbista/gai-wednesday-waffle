@@ -17,12 +17,13 @@ import {
 import { useWaffleStore } from '@/store/useWaffleStore';
 import { useRouter } from 'expo-router';
 import { useRealtime } from '@/hooks/useRealtime';
-import { groupsService } from '@/lib/database-service';
+import { useAuth } from '@/hooks/useAuth';
 import { Plus, MessageCircle, Clock, Users, UserPlus } from 'lucide-react-native';
 
 export default function ChatsScreen() {
-  const { groups, setGroups, currentUser, isLoading, setLoading } = useWaffleStore();
+  const { groups, currentUser, isLoading, error, loadUserGroups, joinGroup, createGroup, clearData } = useWaffleStore();
   const { status, setCallbacks } = useRealtime();
+  const { isReady, isAuthenticated } = useAuth();
   const router = useRouter();
 
   // Group management state
@@ -31,49 +32,31 @@ export default function ChatsScreen() {
   const [inviteCode, setInviteCode] = useState('');
   const [groupName, setGroupName] = useState('');
 
-  // Load user's groups
-  const loadGroups = async () => {
-    try {
-      setLoading(true);
-      const { data: userGroups, error } = await groupsService.getUserGroups();
-      
-      if (error) {
-        throw new Error(error.message);
-      }
-
-      if (userGroups) {
-        // Convert to store format and set (placeholder - using mock data structure for now)
-        console.log('📋 Loaded', userGroups.length, 'groups');
-        // TODO: Implement proper conversion from GroupWithMembers to Group
-      }
-    } catch (error) {
-      console.error('❌ Error loading groups:', error);
-      Alert.alert('Error', 'Failed to load groups');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Set up real-time callbacks for group updates
+  // Set up enhanced real-time callbacks
   useEffect(() => {
     setCallbacks({
-      onGroupUpdate: (group) => {
-        if (__DEV__) console.log('🏗️ Real-time group update:', group.name);
-        // Reload groups to get updated data
-        loadGroups();
+      onGroupUpdate: (group, action) => {
+        if (__DEV__) console.log('🏗️ Real-time group update callback:', action, group.name);
+        // Smart updates are handled automatically by the real-time hook
+        // This callback is just for additional UI feedback if needed
       },
       onMemberUpdate: (member, action) => {
-        if (__DEV__) console.log('👥 Real-time member update:', action, member.user_id);
-        // Reload groups to get updated member counts
-        loadGroups();
+        if (__DEV__) console.log('👥 Real-time member update callback:', action, member.user_id);
+        // Smart member updates are handled automatically by the real-time hook
+        // This callback is just for additional UI feedback if needed
       },
     });
   }, [setCallbacks]);
 
-  // Load groups on mount
+  // Load groups when authentication is ready
   useEffect(() => {
-    loadGroups();
-  }, []);
+    if (isReady && isAuthenticated) {
+      loadUserGroups();
+    } else if (isReady && !isAuthenticated) {
+      // Clear data if not authenticated
+      clearData();
+    }
+  }, [isReady, isAuthenticated, loadUserGroups, clearData]);
 
   const handleJoinGroup = async () => {
     if (!inviteCode.trim()) {
@@ -82,24 +65,24 @@ export default function ChatsScreen() {
     }
 
     try {
-      setLoading(true);
-      const { data: joinedGroup, error } = await groupsService.joinByInviteCode(inviteCode.trim().toUpperCase());
-      
-      if (error) {
-        throw new Error(error.message);
-      }
-
-      if (joinedGroup) {
-        setInviteCode('');
-        setShowJoinModal(false);
-        Alert.alert('Success', `Joined "${joinedGroup.name}" successfully!`);
-        loadGroups(); // Refresh groups list
-      }
+      await joinGroup(inviteCode.trim().toUpperCase());
+      setInviteCode('');
+      setShowJoinModal(false);
+      Alert.alert('Success', 'Joined group successfully!');
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to join group';
-      Alert.alert('Error', errorMessage);
-    } finally {
-      setLoading(false);
+      let errorMessage = 'Failed to join group';
+      let errorTitle = 'Error';
+      
+      if (error instanceof Error) {
+        if (error.message === 'NETWORK_ERROR') {
+          errorTitle = 'Connection Problem';
+          errorMessage = 'Can\'t connect to the server. Please check your internet connection and try again.';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
+      Alert.alert(errorTitle, errorMessage);
     }
   };
 
@@ -110,32 +93,30 @@ export default function ChatsScreen() {
     }
 
     try {
-      setLoading(true);
-      const { data: newGroup, error } = await groupsService.create({
-        name: groupName.trim(),
-      });
-
-      // console log the data i.e. new group
-      console.log('🔍 New group data:', newGroup);
-
-      if (error) {
-        throw new Error(error.message);
-      }
-
+      const newGroup = await createGroup(groupName.trim());
+      
       if (newGroup) {
         setGroupName('');
         setShowCreateModal(false);
         Alert.alert(
           'Success', 
-          `Group "${newGroup.name}" created!\n\nInvite Code: ${newGroup.invite_code}\n\nShare this code with friends to join!`
+          `Group "${newGroup.name}" created!\n\nInvite Code: ${newGroup.inviteCode}\n\nShare this code with friends to join!`
         );
-        loadGroups(); // Refresh groups list
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to create group';
-      Alert.alert('Error', errorMessage);
-    } finally {
-      setLoading(false);
+      let errorMessage = 'Failed to create group';
+      let errorTitle = 'Error';
+      
+      if (error instanceof Error) {
+        if (error.message === 'NETWORK_ERROR') {
+          errorTitle = 'Connection Problem';
+          errorMessage = 'Can\'t connect to the server. Please check your internet connection and try again.';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
+      Alert.alert(errorTitle, errorMessage);
     }
   };
 
@@ -172,11 +153,20 @@ export default function ChatsScreen() {
   const getTimeAgo = (date: Date) => {
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
+    const diffMinutes = Math.floor(diffMs / (1000 * 60));
     const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
     const diffDays = Math.floor(diffHours / 24);
 
     if (diffDays > 0) return `${diffDays}d`;
     if (diffHours > 0) return `${diffHours}h`;
+    if (diffMinutes >= 2) {
+      // Show actual time for messages 2+ minutes old but less than 1 hour
+      return date.toLocaleTimeString([], { 
+        hour: 'numeric', 
+        minute: '2-digit',
+        hour12: true 
+      });
+    }
     return 'now';
   };
 
@@ -184,13 +174,87 @@ export default function ChatsScreen() {
     return group.members.filter((m: any) => !m.hasPostedThisWeek && m.id !== currentUser?.id);
   };
 
+  // Show loading state if authentication isn't ready
+  if (!isReady) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#F97316" />
+          <Text style={styles.loadingText}>Loading...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Show auth required state if not authenticated
+  if (!isAuthenticated) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.emptyState}>
+          <MessageCircle size={48} color="#D1D5DB" />
+          <Text style={styles.emptyTitle}>Please sign in</Text>
+          <Text style={styles.emptySubtitle}>
+            Sign in to view your waffle groups
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Show network error state if there's a connectivity issue
+  if (error === 'NETWORK_ERROR') {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.greeting}>Good morning,</Text>
+            <Text style={styles.userName}>{currentUser?.name || 'User'}</Text>
+          </View>
+          <TouchableOpacity 
+            style={styles.newChatButton}
+            onPress={handleAddPress}
+          >
+            <Plus size={20} color="#F97316" />
+          </TouchableOpacity>
+        </View>
+        <View style={styles.networkErrorContainer}>
+          <View style={styles.networkErrorIcon}>
+            <Text style={styles.networkErrorEmoji}>📡</Text>
+          </View>
+          <Text style={styles.networkErrorTitle}>Connection Problem</Text>
+          <Text style={styles.networkErrorMessage}>
+            Can't connect to the server right now. Please check your internet connection and try again.
+          </Text>
+          <TouchableOpacity 
+            style={styles.retryButton}
+            onPress={() => {
+              if (isAuthenticated) {
+                loadUserGroups();
+              }
+            }}
+            disabled={isLoading}
+          >
+            <Text style={styles.retryButtonText}>
+              {isLoading ? 'Retrying...' : 'Try Again'}
+            </Text>
+          </TouchableOpacity>
+          <Text style={styles.networkErrorHelp}>
+            • Check your WiFi or mobile data{'\n'}
+            • Make sure you have internet access{'\n'}
+            • Try refreshing the app
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <View>
           <Text style={styles.greeting}>Good morning,</Text>
-          <Text style={styles.userName}>{currentUser?.name}</Text>
+          <Text style={styles.userName}>{currentUser?.name || 'User'}</Text>
         </View>
         <TouchableOpacity 
           style={styles.newChatButton}
@@ -272,7 +336,7 @@ export default function ChatsScreen() {
                       !member.hasPostedThisWeek && styles.memberAvatarPending
                     ]}
                   >
-                    <Image source={{ uri: member.avatar }} style={styles.memberAvatarImage} />
+                    <Image source={{ uri: member.avatar || 'https://via.placeholder.com/28' }} style={styles.memberAvatarImage} />
                     {!member.hasPostedThisWeek && member.id !== currentUser?.id && (
                       <View style={styles.pendingIndicator} />
                     )}
@@ -295,13 +359,21 @@ export default function ChatsScreen() {
           <MessageCircle size={48} color="#D1D5DB" />
           <Text style={styles.emptyTitle}>No waffle groups yet</Text>
           <Text style={styles.emptySubtitle}>
-            Create or join a group to start sharing weekly life updates
+            Join your friends or create a new group to start sharing weekly life updates
           </Text>
           <TouchableOpacity 
-            style={styles.createGroupButton}
-            onPress={handleAddPress}
+            style={styles.joinGroupButton}
+            onPress={() => setShowJoinModal(true)}
           >
-            <Text style={styles.createGroupText}>Create Your First Group</Text>
+            <UserPlus size={20} color="#FFFFFF" />
+            <Text style={styles.joinGroupText}>Join a Group</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.createGroupButton}
+            onPress={() => setShowCreateModal(true)}
+          >
+            <Users size={20} color="#F97316" />
+            <Text style={styles.createGroupText}>Create New Group</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -404,6 +476,18 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#FAFAFA',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  loadingText: {
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
+    color: '#6B7280',
+    marginTop: 16,
   },
   header: {
     flexDirection: 'row',
@@ -595,16 +679,38 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     marginBottom: 32,
   },
-  createGroupButton: {
+  joinGroupButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: '#F97316',
     borderRadius: 12,
     paddingVertical: 16,
     paddingHorizontal: 32,
+    marginBottom: 12,
   },
-  createGroupText: {
+  joinGroupText: {
     color: '#FFFFFF',
     fontFamily: 'Poppins-SemiBold',
     fontSize: 16,
+    marginLeft: 8,
+  },
+  createGroupButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+    borderWidth: 2,
+    borderColor: '#F97316',
+  },
+  createGroupText: {
+    color: '#F97316',
+    fontFamily: 'Poppins-SemiBold',
+    fontSize: 16,
+    marginLeft: 8,
   },
   // Modal styles
   modalOverlay: {
@@ -677,5 +783,60 @@ const styles = StyleSheet.create({
   },
   disabledButton: {
     opacity: 0.5,
+  },
+  // Network error styles
+  networkErrorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+    backgroundColor: '#FAFAFA',
+  },
+  networkErrorIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#FEF7ED',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  networkErrorEmoji: {
+    fontSize: 36,
+  },
+  networkErrorTitle: {
+    fontSize: 24,
+    fontFamily: 'Poppins-Bold',
+    color: '#1F2937',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  networkErrorMessage: {
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
+    color: '#6B7280',
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: 32,
+  },
+  retryButton: {
+    backgroundColor: '#F97316',
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+    marginBottom: 24,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontFamily: 'Poppins-SemiBold',
+    fontSize: 16,
+    textAlign: 'center',
+  },
+  networkErrorHelp: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    color: '#9CA3AF',
+    textAlign: 'center',
+    lineHeight: 20,
   },
 });

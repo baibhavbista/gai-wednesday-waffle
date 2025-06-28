@@ -90,7 +90,7 @@ CREATE TABLE public.waffles (
   user_id UUID REFERENCES public.profiles(id) NOT NULL,
   group_id UUID REFERENCES public.groups(id) ON DELETE CASCADE,
   content_url TEXT, -- Storage URL
-  content_type TEXT CHECK (content_type IN ('video', 'photo')),
+  content_type TEXT CHECK (content_type IN ('video', 'photo', 'text')),
   caption TEXT,
   retention_type TEXT DEFAULT '7_days' CHECK (retention_type IN ('view_once', '7_days', 'forever')),
   created_at TIMESTAMPTZ DEFAULT NOW(),

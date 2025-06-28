@@ -71,7 +71,7 @@ export interface Database {
           user_id: string
           group_id: string
           content_url: string | null
-          content_type: 'video' | 'photo'
+          content_type: 'video' | 'photo' | 'text'
           caption: string | null
           retention_type: 'view_once' | '7_days' | 'forever'
           created_at: string
@@ -86,7 +86,7 @@ export interface Database {
           user_id: string
           group_id: string
           content_url?: string | null
-          content_type: 'video' | 'photo'
+          content_type: 'video' | 'photo' | 'text'
           caption?: string | null
           retention_type?: 'view_once' | '7_days' | 'forever'
           created_at?: string
