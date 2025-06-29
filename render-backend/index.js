@@ -169,19 +169,53 @@ app.post(
 
       console.log('Transcription:', transcript.text);
 
-      // Step 3: Generate captions with GPT-4o
+      // NEW: Step 2.5 Generate embedding for the preview transcript text
+      console.log('Generating embedding for preview transcript...');
+      const previewEmbeddingResp = await openai.embeddings.create({
+        model: 'text-embedding-3-small',
+        input: transcript.text,
+      });
+      const previewEmbedding = previewEmbeddingResp.data[0].embedding;
+      const previewEmbeddingLiteral = '[' + previewEmbedding.join(',') + ']';
+
+      // NEW: Step 2.6 Retrieve captions from similar transcripts in DB (RAG)
+      console.log('Retrieving similar captions from database...');
+      let similarCaptions = [];
+      let dbClient;
+      try {
+        dbClient = await pool.connect();
+        const similarQuery = `
+          SELECT w.caption
+          FROM public.transcripts t
+          JOIN public.waffles w ON w.content_url = t.content_url
+          WHERE w.caption IS NOT NULL AND t.embedding IS NOT NULL
+          ORDER BY t.embedding <=> $1::vector
+          LIMIT 5;
+        `;
+        const { rows } = await dbClient.query(similarQuery, [previewEmbeddingLiteral]);
+        similarCaptions = rows.map(r => r.caption).filter(Boolean);
+        console.log('Found similar captions:', similarCaptions);
+      } catch (dbErr) {
+        console.error('DB error during similar caption lookup:', dbErr);
+      } finally {
+        if (dbClient) dbClient.release();
+      }
+
+      // Step 3: Generate captions with GPT-4o (now with retrieved context)
       const prompt = `
-        Based on the following transcript, generate 3 short, engaging captions for a social media video.
-        The user wants captions in the style of these examples: "${styleCaptions.join('", "')}".
-        Each caption must be 70 characters or less.
-        The output must be a JSON array of strings, like this: ["caption 1", "caption 2", "caption 3"].
-        Transcript: "${transcript.text}"
+        You are Caption Genie. Using the provided live transcript and examples, reply with a JSON array containing exactly 3 creative video captions. Each caption must be 70 characters or fewer. Do not include any additional keys.
+
+        Live transcript:\n"${transcript.text}"
+
+        Captions the user generally likes:\n${styleCaptions.map(c => '"'+c+'"').join('\n')}
+
+        Captions from similar past waffles:\n${similarCaptions.map(c => '"'+c+'"').join('\n')}
       `;
 
       const response = await openai.chat.completions.create({
         model: 'gpt-4o',
         messages: [{ role: 'system', content: prompt }],
-        max_tokens: 100,
+        max_tokens: 120,
         temperature: 0.7,
         response_format: { type: 'json_object' },
       });
