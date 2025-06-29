@@ -87,26 +87,32 @@ const authenticateToken = (req, res, next) => {
 
 const test = async () => {
   let dbClient;
-  let waffleId="6ab57963-f545-4112-8647-e6f295544b8a";
+  let fileName="https://jmkkhtqdauxfaicnmnlm.supabase.co/storage/v1/object/sign/waffles/36a1ff43-4d4e-4455-bbf2-f2a106a5addc/1751216874296-52w67zs26.mp4?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV81MjY2MTA5ZC0wMWEzLTRjM2YtYmY0ZS01ODk2N2MwYzZjYzgiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJ3YWZmbGVzLzM2YTFmZjQzLTRkNGUtNDQ1NS1iYmYyLWYyYTEwNmE1YWRkYy8xNzUxMjE2ODc0Mjk2LTUydzY3enMyNi5tcDQiLCJpYXQiOjE3NTEyMTY4NzgsImV4cCI6MTc1MTgyMTY3OH0.yVTbrZYGVgqNdB3W5LfAYvBYbL44BMDttqqz8d_Bqzc";
   let transcript={text: "1243"};
   try {
     console.log('Attempting database connection...');
     dbClient = await pool.connect();
     console.log('Successfully connected to database');
 
-    const query = 'UPDATE public.waffles SET ai_transcript = $1 WHERE id = $2 RETURNING id';
+    const query = `
+      UPDATE public.waffles 
+      SET ai_transcript = $1 
+      WHERE content_url LIKE '%' || $2 || '%' 
+      AND content_type = 'video' 
+      RETURNING id;
+      `;
     console.log('Executing query:', {
       query,
-      waffleId,
+      fileName,
       transcriptLength: transcript.text.length
     });
     
-    const result = await dbClient.query(query, [transcript.text, waffleId]);
+    const result = await dbClient.query(query, [transcript.text, fileName]);
     
     if (result.rowCount === 0) {
-      console.warn(`No waffle found with ID ${waffleId}`);
+      console.warn(`No waffle found with fileName ${fileName}`);
     } else {
-      console.log(`Successfully updated transcript for waffle ${waffleId}`);
+      console.log(`Successfully updated transcript for waffle ${fileName}`);
     }
   } catch (dbError) {
     console.error('Database error details:', {
@@ -262,14 +268,14 @@ app.post('/process-full-video', async (req, res) => {
     extension: path.extname(fileName),
   });
 
-  const waffleId = path.parse(normalizedPath).name;
+  const smallFileName = path.parse(normalizedPath).name;
 
-  if (!normalizedPath || !waffleId) {
+  if (!normalizedPath || !fileName) {
     console.error('Invalid webhook payload:', req.body);
     return res.status(400).json({ error: 'Invalid webhook payload.' });
   }
 
-  console.log(`Starting processing for waffle ID: ${waffleId}`);
+  console.log(`Starting processing for fileName: ${fileName}`);
   console.log('Full webhook payload:', JSON.stringify(req.body, null, 2));
   let tempFiles = [];
 
@@ -334,7 +340,7 @@ app.post('/process-full-video', async (req, res) => {
       file: fs.createReadStream(audioPath),
       model: 'whisper-1',
     });
-    console.log(`Full transcript for ${waffleId} received.`);
+    console.log(`Full transcript for ${fileName} received.`);
 
     // 4. Update the database with the transcript
     console.log('Connecting to database to update transcript...');
@@ -353,19 +359,25 @@ app.post('/process-full-video', async (req, res) => {
       dbClient = await pool.connect();
       console.log('Successfully connected to database');
 
-      const query = 'UPDATE public.waffles SET ai_transcript = $1 WHERE id = $2 RETURNING id';
+      const query = `
+      UPDATE public.waffles 
+      SET ai_transcript = $1 
+      WHERE content_url LIKE '%' || $2 || '%' 
+      AND content_type = 'video' 
+      RETURNING id;
+      `;
       console.log('Executing query:', {
         query,
-        waffleId,
+        fileName,
         transcriptLength: transcript.text.length
       });
       
-      const result = await dbClient.query(query, [transcript.text, waffleId]);
+      const result = await dbClient.query(query, [transcript.text, fileName]);
       
       if (result.rowCount === 0) {
-        console.warn(`No waffle found with ID ${waffleId}`);
+        console.warn(`No waffle found with fileName ${fileName}`);
       } else {
-        console.log(`Successfully updated transcript for waffle ${waffleId}`);
+        console.log(`Successfully updated transcript for waffles with file path ${fileName}`);
       }
     } catch (dbError) {
       console.error('Database error details:', {
@@ -385,11 +397,11 @@ app.post('/process-full-video', async (req, res) => {
       }
     }
 
-    console.log(`✅ Successfully finished processing for waffle ID: ${waffleId}`);
+    console.log(`✅ Successfully finished processing for file: ${fileName}`);
     res.status(200).json({ message: 'Transcript processed and saved.' });
 
   } catch (error) {
-    console.error(`❌ Error processing full video for ${waffleId}:`, error);
+    console.error(`❌ Error processing full video for ${fileName}:`, error);
     res.status(500).json({ error: 'Failed to process full video.' });
   } finally {
     // 5. Cleanup all temporary files
@@ -404,5 +416,5 @@ app.post('/process-full-video', async (req, res) => {
 app.listen(port, () => {
   console.log(`Backend service listening on port ${port}`);
 
-  test();
+  // test();
 });
