@@ -14,9 +14,11 @@ import {
 import { useWaffleStore } from '@/store/useWaffleStore';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Search, Check } from 'lucide-react-native';
+import { useMedia } from '@/hooks/useMedia';
 
 export default function GroupSelectionScreen() {
   const { groups, addMessage, currentUser, isLoading } = useWaffleStore();
+  const { uploadMedia, isLoading: isUploading, uploadProgress } = useMedia();
   const router = useRouter();
   const params = useLocalSearchParams();
   const [selectedGroups, setSelectedGroups] = useState<Set<string>>(new Set());
@@ -41,7 +43,7 @@ export default function GroupSelectionScreen() {
   };
 
   const sendToSelectedGroups = async () => {
-    if (!currentUser || !videoUri || selectedGroups.size === 0 || isSending) return;
+    if (!currentUser || !videoUri || selectedGroups.size === 0 || isSending || isUploading) return;
 
     setIsSending(true);
 
@@ -54,7 +56,23 @@ export default function GroupSelectionScreen() {
     console.log('📊 Selected Groups Count:', selectedGroups.size);
 
     try {
-      // Send to all selected groups
+      // First, upload the video once to get the public URL
+      console.log('📤 Starting video upload for group selection...');
+      
+      const uploadResult = await uploadMedia(
+        { uri: videoUri, type: 'video' },
+        'video'
+      );
+
+      if (!uploadResult.success) {
+        console.error('❌ Video upload failed:', uploadResult.error);
+        alert(uploadResult.error || 'Failed to upload video');
+        return;
+      }
+
+      console.log('✅ Video uploaded successfully:', uploadResult.url);
+
+      // Now send to all selected groups using the same uploaded URL
       for (const groupId of selectedGroups) {
         const messageData = {
           userId: currentUser.id,
@@ -62,7 +80,7 @@ export default function GroupSelectionScreen() {
           userAvatar: currentUser.avatar,
           content: {
             type: 'video' as const,
-            url: videoUri,
+            url: uploadResult.url, // ✅ Use uploaded URL instead of local file path
           },
           caption: 'Check out my waffle! 🧇',
           retentionType: retentionType,
@@ -90,8 +108,8 @@ export default function GroupSelectionScreen() {
     } catch (error) {
       console.error('❌ Group selection waffle creation failed:', error);
       console.log('🎯 === GROUP SELECTION WAFFLE CREATION FAILED ===');
-      // Show error to user but don't navigate away
-      alert('Failed to send waffle. Please try again.');
+      const errorMessage = error instanceof Error ? error.message : 'Failed to send waffle. Please try again.';
+      alert(errorMessage);
     } finally {
       setIsSending(false);
     }
@@ -116,16 +134,17 @@ export default function GroupSelectionScreen() {
         <TouchableOpacity 
           style={[
             styles.sendButton,
-            (selectedGroups.size === 0 || isSending) && styles.sendButtonDisabled
+            (selectedGroups.size === 0 || isSending || isUploading) && styles.sendButtonDisabled
           ]}
           onPress={sendToSelectedGroups}
-          disabled={selectedGroups.size === 0 || isSending}
+          disabled={selectedGroups.size === 0 || isSending || isUploading}
         >
           <Text style={[
             styles.sendButtonText,
-            (selectedGroups.size === 0 || isSending) && styles.sendButtonTextDisabled
+            (selectedGroups.size === 0 || isSending || isUploading) && styles.sendButtonTextDisabled
           ]}>
-            {isSending ? 'Sending...' : 'Send'}
+            {isUploading ? `Uploading... ${Math.round(uploadProgress)}%` :
+             isSending ? 'Sending...' : 'Send'}
           </Text>
         </TouchableOpacity>
       </View>
@@ -201,7 +220,7 @@ export default function GroupSelectionScreen() {
       </ScrollView>
 
       {/* Bottom Info */}
-      {selectedGroups.size > 0 && !isSending && (
+      {selectedGroups.size > 0 && !isSending && !isUploading && (
         <View style={styles.bottomInfo}>
           <Text style={styles.bottomInfoText}>
             {selectedGroups.size} group{selectedGroups.size > 1 ? 's' : ''} selected
@@ -211,16 +230,21 @@ export default function GroupSelectionScreen() {
 
       {/* Loading Modal */}
       <Modal
-        visible={isSending}
+        visible={isSending || isUploading}
         transparent
         animationType="fade"
       >
         <View style={styles.loadingOverlay}>
           <View style={styles.loadingModal}>
             <ActivityIndicator size="large" color="#F97316" />
-            <Text style={styles.loadingTitle}>Sending Waffle</Text>
+            <Text style={styles.loadingTitle}>
+              {isUploading ? 'Uploading Video' : 'Sending Waffle'}
+            </Text>
             <Text style={styles.loadingMessage}>
-              Sharing to {selectedGroups.size} group{selectedGroups.size > 1 ? 's' : ''}...
+              {isUploading ? 
+                `Uploading video... ${Math.round(uploadProgress)}%` :
+                `Sharing to ${selectedGroups.size} group${selectedGroups.size > 1 ? 's' : ''}...`
+              }
             </Text>
           </View>
         </View>

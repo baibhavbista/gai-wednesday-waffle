@@ -16,6 +16,7 @@ import { useWaffleStore } from '@/store/useWaffleStore';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { settingsService } from '@/lib/settings-service';
+import { useMedia } from '@/hooks/useMedia';
 
 const { width, height } = Dimensions.get('window');
 
@@ -39,6 +40,7 @@ export default function CameraScreen() {
 
   const cameraRef = useRef<CameraView>(null);
   const { groups, addMessage, currentUser, currentGroupId, isLoading } = useWaffleStore();
+  const { uploadMedia, isLoading: isUploading, uploadProgress } = useMedia();
   const router = useRouter();
   const params = useLocalSearchParams();
   const recordingTimer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -147,10 +149,9 @@ export default function CameraScreen() {
       // Start actual video recording
       const video = await cameraRef.current.recordAsync({
         maxDuration: MAX_RECORDING_TIME,
-        quality: '720p',
-        mute: false,
         maxFileSize: 50 * 1024 * 1024, // 50MB limit
-        // videoBitrate: 2000000, // 2Mbps for good quality
+        // need to specify this since we're passing videoBitrate to CameraView
+        codec: "hvc1", // hvc1 is the codec recommended by chatgpt. Also good to later convert this into audio for whisper transcription
       });
 
       console.log('Recording completed, video:', video);
@@ -300,6 +301,10 @@ export default function CameraScreen() {
     if (!selectedGroupId) {
       console.log('🔀 No group selected, navigating to group selection with videoUri:', videoUri);
       console.log('🔀 Passing retention type to group selection:', retentionType);
+      
+      // Note: For group selection flow, we pass the local videoUri and let the group selection 
+      // screen handle the upload when groups are selected. This avoids uploading before knowing 
+      // which groups the user wants to send to.
       router.push({
         pathname: '/group-selection',
         params: { 
@@ -310,15 +315,31 @@ export default function CameraScreen() {
       return;
     }
 
-    // If we have a selected group, send directly
+    // If we have a selected group, upload video first then send
     try {
+      console.log('📤 Starting video upload...');
+      
+      // Upload the video to storage
+      const uploadResult = await uploadMedia(
+        { uri: videoUri, type: 'video' },
+        'video'
+      );
+
+      if (!uploadResult.success) {
+        console.error('❌ Video upload failed:', uploadResult.error);
+        Alert.alert('Upload Failed', uploadResult.error || 'Failed to upload video');
+        return;
+      }
+
+      console.log('✅ Video uploaded successfully:', uploadResult.url);
+
       const messageData = {
         userId: currentUser.id,
         userName: currentUser.name,
         userAvatar: currentUser.avatar,
         content: {
           type: 'video' as const,
-          url: videoUri,
+          url: uploadResult.url, // ✅ Use uploaded URL instead of local file path
         },
         caption: 'Check out my waffle! 🧇',
         retentionType: retentionType,
@@ -345,7 +366,8 @@ export default function CameraScreen() {
     } catch (error) {
       console.error('❌ Waffle creation failed:', error);
       console.log('🧇 === WAFFLE CREATION FAILED ===');
-      Alert.alert('Error', 'Failed to send video');
+      const errorMessage = error instanceof Error ? error.message : 'Failed to send video';
+      Alert.alert('Error', errorMessage);
     }
   };
 
@@ -506,12 +528,18 @@ export default function CameraScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity 
-              style={styles.sendButton}
+              style={[
+                styles.sendButton,
+                (isUploading || isLoading) && styles.sendButtonDisabled
+              ]}
               onPress={sendVideo}
+              disabled={isUploading || isLoading}
             >
               <Send size={20} color="#FFFFFF" />
               <Text style={styles.sendButtonText}>
-                {selectedGroupId ? 'Send' : 'Choose Groups'}
+                {isUploading ? `Uploading... ${Math.round(uploadProgress)}%` :
+                 isLoading ? 'Sending...' :
+                 selectedGroupId ? 'Send' : 'Choose Groups'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -533,6 +561,8 @@ export default function CameraScreen() {
           console.error('Camera mount error:', error);
           Alert.alert('Camera Error', 'Failed to initialize camera. Please try again.');
         }}
+        videoBitrate={2000000} // 2Mbps for okay-ish quality?
+
       >
         {/* Header Controls */}
         <View style={styles.headerControls}>
@@ -923,6 +953,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  sendButtonDisabled: {
+    opacity: 0.6,
   },
   sendButtonText: {
     color: '#FFFFFF',
