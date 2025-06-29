@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import * as FileSystem from 'expo-file-system';
 
 /**
  * Fetches AI-generated caption suggestions from the backend service.
@@ -51,9 +52,81 @@ export const getCaptionSuggestions = async (
     const data = await response.json();
 
     console.log('Caption suggestions:data:', data);
-    return data.suggestions.captions || [];
+    // below, check if data.suggestions.captions is an array, otherwise just return an empty array 
+    if (Array.isArray(data.suggestions.captions)) {
+      return data.suggestions.captions;
+    } else {
+      return [];
+    }
   } catch (error) {
     console.error('Error getting caption suggestions:', error);
+    throw error;
+  }
+};
+
+/**
+ * Fetches AI-generated caption suggestions from the backend service using an audio file.
+ *
+ * @param audioUri The URI of the local audio file.
+ * @param styleCaptions An array of strings representing example captions to guide the AI's style.
+ * @returns A promise that resolves to an array of caption suggestions.
+ */
+export const getCaptionSuggestionsFromAudio = async (
+  audioUri: string,
+  styleCaptions: string[]
+): Promise<string[]> => {
+  const serviceUrl = process.env.EXPO_PUBLIC_CAPTION_SERVICE_URL;
+  if (!serviceUrl) {
+    throw new Error('Caption service URL is not defined in environment variables.');
+  }
+
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  const token = session?.access_token;
+
+  if (!token) {
+    throw new Error('User is not authenticated.');
+  }
+
+  const formData = new FormData();
+  // The 'as any' is a workaround for React Native's FormData typing.
+  formData.append('audioChunk', {
+    uri: audioUri,
+    name: `audio.m4a`,  // Always use .m4a as the backend will convert it
+    type: 'audio/x-m4a',  // More standard MIME type for M4A files
+  } as any);
+  formData.append('styleCaptions', JSON.stringify(styleCaptions));
+
+  try {
+    const response = await fetch(`${serviceUrl}/generate-captions`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'multipart/form-data',
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('❌ Server error details:', errorData);
+      throw new Error(errorData.error || 'Failed to get caption suggestions from audio.');
+    }
+
+    const data = await response.json();
+
+    let out;
+    // below, check if data.suggestions.captions is an array, otherwise just return an empty array 
+    if (Array.isArray(data.suggestions.captions)) {
+      out =  data.suggestions.captions;
+    } else {
+      out =  [];
+    }
+    console.log('Caption suggestions from audio:data:', out, data);
+    return out;
+  } catch (error) {
+    console.error('Error getting caption suggestions from audio:', error);
     throw error;
   }
 }; 

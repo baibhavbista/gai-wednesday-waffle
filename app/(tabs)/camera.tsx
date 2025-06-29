@@ -10,7 +10,8 @@ import {
   Platform,
   TextInput,
 } from 'react-native';
-import { CameraView, CameraType, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
+import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
+import { Audio, InterruptionModeIOS } from 'expo-av';
 import * as MediaLibrary from 'expo-media-library';
 import { RotateCcw, X, Square, Send, Download, ChevronDown } from 'lucide-react-native';
 import { useWaffleStore } from '@/store/useWaffleStore';
@@ -19,16 +20,43 @@ import { VideoView, useVideoPlayer } from 'expo-video';
 import { settingsService } from '@/lib/settings-service';
 import { useMedia } from '@/hooks/useMedia';
 import { getVideoChunk } from '@/lib/media-processing';
-import { getCaptionSuggestions } from '@/lib/ai-service';
+import { getCaptionSuggestions, getCaptionSuggestionsFromAudio } from '@/lib/ai-service';
+import * as FileSystem from 'expo-file-system';
 
 const { width, height } = Dimensions.get('window');
 
 const MAX_RECORDING_TIME = 300; // 5 minutes in seconds
 
+const recordingOptions = {
+  // for Android, create an m4a
+  android: {
+    extension: '.m4a',
+    outputFormat: Audio.AndroidOutputFormat.MPEG_4,
+    audioEncoder: Audio.AndroidAudioEncoder.AAC,
+    sampleRate: 44100,
+    numberOfChannels: 2,
+    bitRate: 128000,
+  },
+  // for iOS, create an m4a (or change to .wav + LINEARPCM if you prefer)
+  ios: {
+    extension: '.m4a',
+    outputFormat: Audio.IOSOutputFormat.MPEG4AAC,
+    audioQuality: Audio.IOSAudioQuality.HIGH,
+    sampleRate: 44100,
+    numberOfChannels: 2,
+    bitRate: 128000,
+  },
+  // add for web too. FIXME: unsure if these are good
+  web: {
+    mimeType: 'audio/webm',
+    bitsPerSecond: 128000,
+  },
+};
+
 export default function CameraScreen() {
   const [facing, setFacing] = useState<CameraType>('front');
-  const [permission, requestPermission] = useCameraPermissions();
-  const [microphonePermission, requestMicrophonePermission] = useMicrophonePermissions();
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+  const [audioPermission, requestAudioPermission] = Audio.usePermissions();
   const [mediaLibraryPermission, requestMediaLibraryPermission] = MediaLibrary.usePermissions();
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -46,6 +74,10 @@ export default function CameraScreen() {
   const [captionSuggestions, setCaptionSuggestions] = useState<string[]>([]);
   const [isGeneratingCaptions, setIsGeneratingCaptions] = useState(false);
   const [captionError, setCaptionError] = useState<string | null>(null);
+
+  // Audio recording states
+  const [audioRecording, setAudioRecording] = useState<Audio.Recording | null>(null);
+  const captionTriggeredRef = useRef(false);
 
   const cameraRef = useRef<CameraView>(null);
   const { groups, addMessage, currentUser, currentGroupId, isLoading } = useWaffleStore();
@@ -70,6 +102,25 @@ export default function CameraScreen() {
     }
     // Don't set currentGroupId as default - we want null when coming from bottom nav
   }, [sourceGroupId]);
+
+  // Configure audio session for dual recording
+  useEffect(() => {
+    const setupAudio = async () => {
+      try {
+        if (__DEV__) console.log('🎤 Setting up audio mode for dual recording...');
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: true,
+          playsInSilentModeIOS: true,
+          interruptionModeIOS: InterruptionModeIOS.MixWithOthers,
+        });
+        if (__DEV__) console.log('✅ Audio mode setup complete.');
+      } catch (error) {
+        if (__DEV__) console.error('❌ Failed to set audio mode:', error);
+        Alert.alert('Audio Error', 'Could not configure audio recording. Caption suggestions might be slower.');
+      }
+    };
+    setupAudio();
+  }, []);
 
   // Load default retention type from settings
   useEffect(() => {
@@ -126,7 +177,7 @@ export default function CameraScreen() {
     if (showVideoPreview && player && videoUri) {
       player.play();
       // Trigger caption generation when preview appears
-      generateCaptions();
+      generateCaptionsFromVideo();
     } else if (player) {
       try {
         player.replace(''); // Stop playback
@@ -136,8 +187,68 @@ export default function CameraScreen() {
     }
   }, [showVideoPreview, player, videoUri]);
 
-  const generateCaptions = async () => {
-    if (!videoUri) return;
+  const triggerFastCaptions = async (newAudioRecording: Audio.Recording) => {
+    let audioRecording = newAudioRecording;
+    if (!audioRecording) {
+      console.log('🎤 Audio recording not found, cannot trigger fast captions.');
+      return;
+    }
+
+    console.log('🎤 Stopping audio recording to get fast captions...');
+    setIsGeneratingCaptions(true);
+    setCaptionError(null);
+    captionTriggeredRef.current = true; // Mark as triggered
+
+    try {
+      await audioRecording.stopAndUnloadAsync();
+      const audioUri = audioRecording.getURI();
+      if (!audioUri) {
+        throw new Error('Could not get audio recording URI.');
+      }
+
+      // Debug: Log the audio file details
+      console.log(`🎤 Audio recorded, URI: ${audioUri}`);
+      
+      // Check if the file exists and get its info
+      const fileInfo = await FileSystem.getInfoAsync(audioUri);
+      console.log('📁 Audio File Info:', {
+        exists: fileInfo.exists,
+        size: fileInfo.exists && 'size' in fileInfo ? `${(fileInfo.size / 1024).toFixed(2)} KB` : 'unknown',
+        uri: fileInfo.uri
+      });
+
+      // Read the first few bytes to check the file header
+      const header = await FileSystem.readAsStringAsync(audioUri, {
+        length: 32,  // Read first 32 bytes
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      console.log('🔍 File Header (Base64):', header);
+
+      // Get file extension from URI
+      const extension = audioUri.split('.').pop()?.toLowerCase();
+      console.log('📝 File Extension:', extension);
+
+      const styleCaptions = ['Just another manic monday', 'spilling the tea', 'weekly recap'];
+      const suggestions = await getCaptionSuggestionsFromAudio(audioUri, styleCaptions);
+      setCaptionSuggestions(suggestions);
+      console.log('✅ Fast captions generated successfully.');
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to generate captions from audio.';
+      setCaptionError(errorMessage);
+      console.error('Error generating fast captions:', errorMessage);
+      // Fallback to video method if audio fails
+      captionTriggeredRef.current = false;
+    } finally {
+      setIsGeneratingCaptions(false);
+      setAudioRecording(null);
+    }
+  };
+
+  const generateCaptionsFromVideo = async () => {
+    if (!videoUri || captionTriggeredRef.current) {
+      if (captionTriggeredRef.current) console.log('📸 Video captions skipped, fast captions already triggered.');
+      return;
+    }
 
     setIsGeneratingCaptions(true);
     setCaptionError(null);
@@ -146,14 +257,14 @@ export default function CameraScreen() {
     try {
       // For now, using hardcoded style examples as per the plan.
       // This could be fetched from user settings in the future.
-      const styleCaptions = ["Just another manic monday", "spilling the tea", "weekly recap"];
-      
+      const styleCaptions = ['Just another manic monday', 'spilling the tea', 'weekly recap'];
+
       const videoChunkUri = await getVideoChunk(videoUri);
       const suggestions = await getCaptionSuggestions(videoChunkUri, styleCaptions);
-      
+
       setCaptionSuggestions(suggestions);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Failed to generate captions.";
+      const errorMessage = error instanceof Error ? error.message : 'Failed to generate captions.';
       setCaptionError(errorMessage);
       console.error('Error generating captions:', errorMessage);
     } finally {
@@ -169,10 +280,32 @@ export default function CameraScreen() {
       setIsRecording(true);
       setRecordingTime(0);
 
+      // Also reset caption states
+      setCaption('');
+      setCaptionSuggestions([]);
+      setCaptionError(null);
+      captionTriggeredRef.current = false; // Reset caption trigger flag
+
+      // --- Start Audio Recording ---
+      console.log('🎤 Starting audio recorder...');
+      const newAudioRecording = new Audio.Recording();
+      await newAudioRecording.prepareToRecordAsync(recordingOptions);
+      await newAudioRecording.startAsync();
+      setAudioRecording(newAudioRecording);
+      console.log('🎤 Audio recorder started.');
+
       // Start recording timer
       recordingTimer.current = setInterval(() => {
         setRecordingTime(prev => {
           const newTime = prev + 1;
+
+          // After 30s, trigger fast captions if not already done
+          if (newTime >= 30 && !captionTriggeredRef.current) {
+            console.log('⏰ 30-second mark reached, triggering fast captions...');
+            captionTriggeredRef.current = true; // so that this is just called once
+            triggerFastCaptions(newAudioRecording);
+          }
+
           // Auto-stop at 5 minutes
           if (newTime >= MAX_RECORDING_TIME) {
             stopRecording();
@@ -207,11 +340,6 @@ export default function CameraScreen() {
         recordingTimer.current = null;
       }
       
-      // Also reset caption states
-      setCaption('');
-      setCaptionSuggestions([]);
-      setCaptionError(null);
-      
     } catch (error) {
       console.error('Error during recording:', error);
       
@@ -232,10 +360,22 @@ export default function CameraScreen() {
     }
   };
 
-  const stopRecording = () => {
+  const stopRecording = async () => {
     if (!cameraRef.current || !isRecording) return;
 
     console.log('Stop recording button pressed');
+
+    // --- Stop audio recording if it's still running ---
+    if (audioRecording) {
+      console.log('🎤 Stopping audio recorder from main stop function...');
+      try {
+        await audioRecording.stopAndUnloadAsync();
+        setAudioRecording(null);
+        console.log('🎤 Audio recorder stopped and unloaded.');
+      } catch (error) {
+        console.error('🎤 Error stopping audio recorder:', error);
+      }
+    }
     
     // Clear the timer immediately
     if (recordingTimer.current) {
@@ -259,6 +399,13 @@ export default function CameraScreen() {
       }
     }
     
+    // Cleanup audio recording if it exists
+    if (audioRecording) {
+      console.log('🎤 Cleaning up lingering audio recording on retake...');
+      audioRecording.stopAndUnloadAsync().catch(err => console.error('Error unloading audio on retake', err));
+      setAudioRecording(null);
+    }
+
     // Reset video states
     setShowVideoPreview(false);
     setVideoUri(null);
@@ -414,13 +561,13 @@ export default function CameraScreen() {
     }
   };
 
-  if (!permission || !microphonePermission) {
+  if (!cameraPermission || !audioPermission) {
     return <View style={styles.container} />;
   }
 
-  if (!permission.granted || !microphonePermission.granted) {
-    const needsCamera = !permission.granted;
-    const needsMicrophone = !microphonePermission.granted;
+  if (!cameraPermission.granted || !audioPermission.granted) {
+    const needsCamera = !cameraPermission.granted;
+    const needsMicrophone = !audioPermission.granted;
     
     return (
       <View style={styles.permissionContainer}>
@@ -431,8 +578,8 @@ export default function CameraScreen() {
         <TouchableOpacity 
           style={styles.permissionButton} 
           onPress={() => {
-            if (needsCamera) requestPermission();
-            if (needsMicrophone) requestMicrophonePermission();
+            if (needsCamera) requestCameraPermission();
+            if (needsMicrophone) requestAudioPermission();
           }}
         >
           <Text style={styles.permissionButtonText}>Grant Permission</Text>
