@@ -3,8 +3,7 @@ services:
   - type: web
     name: waffle-app-caption-service
     plan: free # Uses the free tier with spin-down behavior
-    runtime: native
-    env: node
+    runtime: node
 
     # Specifies the sub-directory for this service
     # This is the most critical setting for the monorepo structure
