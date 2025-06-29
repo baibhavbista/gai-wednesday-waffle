@@ -107,6 +107,9 @@ app.post('/generate-captions', authenticateToken, upload.single('videoChunk'), a
     });
 
     const suggestions = JSON.parse(response.choices[0].message.content);
+
+    // console logs for suggestions
+    console.log('Caption Suggestions:', suggestions);
     res.json({ suggestions });
 
   } catch (error) {
@@ -122,18 +125,22 @@ app.post('/generate-captions', authenticateToken, upload.single('videoChunk'), a
 
 // Endpoint for processing full video transcriptions, triggered by Supabase Storage webhook.
 app.post('/process-full-video', async (req, res) => {
+  console.log('Received webhook for full video processing.');
   // The webhook payload from Supabase Storage for a new object.
   const { name: fileName } = req.body.record;
   const waffleId = path.parse(fileName).name;
 
   if (!fileName || !waffleId) {
+    console.error('Invalid webhook payload:', req.body);
     return res.status(400).json({ error: 'Invalid webhook payload.' });
   }
 
+  console.log(`Starting processing for waffle ID: ${waffleId}`);
   let tempFiles = [];
 
   try {
     // 1. Download video from Supabase Storage
+    console.log(`Downloading ${fileName} from Supabase Storage...`);
     const { data, error: downloadError } = await supabase.storage
       .from('waffles')
       .download(fileName);
@@ -144,9 +151,11 @@ app.post('/process-full-video', async (req, res) => {
     const tempVideoPath = tmp.tmpNameSync({ postfix: path.extname(fileName) });
     fs.writeFileSync(tempVideoPath, videoBuffer);
     tempFiles.push(tempVideoPath);
+    console.log(`Successfully downloaded video to ${tempVideoPath}`);
 
     // 2. Extract audio with FFmpeg
     const audioPath = `${tempVideoPath}.mp3`;
+    console.log(`Extracting audio to ${audioPath} using FFmpeg...`);
     await new Promise((resolve, reject) => {
       const command = `ffmpeg -i ${tempVideoPath} -vn -acodec libmp3lame -q:a 2 ${audioPath}`;
       exec(command, (error) => {
@@ -155,15 +164,18 @@ app.post('/process-full-video', async (req, res) => {
         resolve();
       });
     });
+    console.log('Successfully extracted audio.');
 
     // 3. Transcribe with Whisper
+    console.log('Transcribing audio with Whisper...');
     const transcript = await openai.audio.transcriptions.create({
       file: fs.createReadStream(audioPath),
       model: 'whisper-1',
     });
-    console.log(`Full transcript for ${waffleId}:`, transcript.text);
+    console.log(`Full transcript for ${waffleId} received.`);
 
     // 4. Update the database with the transcript
+    console.log('Connecting to database to update transcript...');
     const dbClient = await pool.connect();
     try {
       const query = 'UPDATE public.waffles SET ai_transcript = $1 WHERE id = $2';
@@ -171,18 +183,22 @@ app.post('/process-full-video', async (req, res) => {
       console.log(`Successfully updated transcript for waffle ${waffleId}.`);
     } finally {
       dbClient.release();
+      console.log('Database connection released.');
     }
 
+    console.log(`✅ Successfully finished processing for waffle ID: ${waffleId}`);
     res.status(200).json({ message: 'Transcript processed and saved.' });
 
   } catch (error) {
-    console.error(`Error processing full video for ${waffleId}:`, error);
+    console.error(`❌ Error processing full video for ${waffleId}:`, error);
     res.status(500).json({ error: 'Failed to process full video.' });
   } finally {
     // 5. Cleanup all temporary files
+    console.log(`Cleaning up temporary files: ${tempFiles.join(', ')}`);
     tempFiles.forEach(file => fs.unlink(file, err => {
       if (err) console.error(`Error deleting temp file ${file}:`, err);
     }));
+    console.log('Cleanup complete.');
   }
 });
 
