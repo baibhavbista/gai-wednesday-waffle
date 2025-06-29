@@ -20,7 +20,7 @@ import { VideoView, useVideoPlayer } from 'expo-video';
 import { settingsService } from '@/lib/settings-service';
 import { useMedia } from '@/hooks/useMedia';
 import { getVideoChunk } from '@/lib/media-processing';
-import { getCaptionSuggestions, getCaptionSuggestionsFromAudio } from '@/lib/ai-service';
+import { getCaptionSuggestions, getCaptionSuggestionsFromAudio, getConversationStarters } from '@/lib/ai-service';
 import * as FileSystem from 'expo-file-system';
 
 const { width, height } = Dimensions.get('window');
@@ -77,6 +77,11 @@ export default function CameraScreen() {
   // Audio recording states
   const [audioRecording, setAudioRecording] = useState<Audio.Recording | null>(null);
   const captionTriggeredRef = useRef(false);
+
+  // Prompt-Me-Please states
+  const [starterPrompts, setStarterPrompts] = useState<string[]>([]);
+  const [showStarterOverlay, setShowStarterOverlay] = useState(false);
+  const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const cameraRef = useRef<CameraView>(null);
   const { groups, addMessage, currentUser, currentGroupId, isLoading } = useWaffleStore();
@@ -170,6 +175,45 @@ export default function CameraScreen() {
       }
     }
   }, [showVideoPreview, player, videoUri]);
+
+  // Idle timer to trigger Prompt-Me-Please suggestions
+  useEffect(() => {
+    // Helper to clear existing timer
+    const clearExisting = () => {
+      if (idleTimer.current) {
+        clearTimeout(idleTimer.current);
+        idleTimer.current = null;
+      }
+    };
+
+    // If user is recording or previewing, stop the idle timer and hide overlay
+    if (isRecording || showVideoPreview) {
+      clearExisting();
+      setShowStarterOverlay(false);
+      return;
+    }
+
+    // Only start timer when camera is idle and a group is selected
+    if (!isRecording && !showVideoPreview && selectedGroupId && currentUser) {
+      clearExisting();
+      idleTimer.current = setTimeout(async () => {
+        try {
+          const prompts = await getConversationStarters(selectedGroupId, currentUser.id);
+          if (prompts.length) {
+            setStarterPrompts(prompts);
+            setShowStarterOverlay(true);
+          }
+        } catch (err) {
+          console.log('Prompt-Me-Please error:', err);
+        }
+      }, 10000); // 10 seconds idle
+    }
+
+    // Cleanup when dependencies change
+    return () => {
+      clearExisting();
+    };
+  }, [isRecording, showVideoPreview, selectedGroupId, currentUser]);
 
   const triggerFastCaptions = async (newAudioRecording: Audio.Recording) => {
     let audioRecording = newAudioRecording;
@@ -715,6 +759,24 @@ export default function CameraScreen() {
         videoBitrate={1000000} // 2Mbps for okay-ish quality?
       />
 
+      {/* Prompt-Me-Please overlay */}
+      {showStarterOverlay && starterPrompts.length > 0 && (
+        <View style={styles.promptOverlay}>
+          {starterPrompts.map((prompt, idx) => (
+            <TouchableOpacity
+              key={idx}
+              style={styles.promptChip}
+              onPress={() => {
+                setCaption(prompt);
+                setShowStarterOverlay(false);
+              }}
+            >
+              <Text style={styles.promptText}>{prompt}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+
       {/* Header Controls - Now an overlay */}
       <View style={styles.headerControls}>
         <TouchableOpacity style={styles.controlButton} onPress={handleClose}>
@@ -1121,5 +1183,26 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-SemiBold',
     fontSize: 16,
     marginLeft: 8,
+  },
+  promptOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  promptChip: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    margin: 8,
+  },
+  promptText: {
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
+    color: '#1F2937',
   },
 });
