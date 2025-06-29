@@ -8,6 +8,7 @@ import {
   Dimensions,
   Alert,
   Platform,
+  TextInput,
 } from 'react-native';
 import { CameraView, CameraType, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import * as MediaLibrary from 'expo-media-library';
@@ -17,6 +18,8 @@ import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { settingsService } from '@/lib/settings-service';
 import { useMedia } from '@/hooks/useMedia';
+import { getVideoChunk } from '@/lib/media-processing';
+import { getCaptionSuggestions } from '@/lib/ai-service';
 
 const { width, height } = Dimensions.get('window');
 
@@ -31,12 +34,18 @@ export default function CameraScreen() {
   const [recordingTime, setRecordingTime] = useState(0);
   const [showGroupDropdown, setShowGroupDropdown] = useState(false);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [caption, setCaption] = useState('');
   const [retentionType, setRetentionType] = useState<'view-once' | '7-day' | 'keep-forever'>('7-day');
   
   // Video preview states
   const [videoUri, setVideoUri] = useState<string | null>(null);
   const [showVideoPreview, setShowVideoPreview] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+
+  // Caption Genie states
+  const [captionSuggestions, setCaptionSuggestions] = useState<string[]>([]);
+  const [isGeneratingCaptions, setIsGeneratingCaptions] = useState(false);
+  const [captionError, setCaptionError] = useState<string | null>(null);
 
   const cameraRef = useRef<CameraView>(null);
   const { groups, addMessage, currentUser, currentGroupId, isLoading } = useWaffleStore();
@@ -116,6 +125,8 @@ export default function CameraScreen() {
   useEffect(() => {
     if (showVideoPreview && player && videoUri) {
       player.play();
+      // Trigger caption generation when preview appears
+      generateCaptions();
     } else if (player) {
       try {
         player.replace(''); // Stop playback
@@ -124,6 +135,31 @@ export default function CameraScreen() {
       }
     }
   }, [showVideoPreview, player, videoUri]);
+
+  const generateCaptions = async () => {
+    if (!videoUri) return;
+
+    setIsGeneratingCaptions(true);
+    setCaptionError(null);
+    setCaptionSuggestions([]);
+
+    try {
+      // For now, using hardcoded style examples as per the plan.
+      // This could be fetched from user settings in the future.
+      const styleCaptions = ["Just another manic monday", "spilling the tea", "weekly recap"];
+      
+      const videoChunkUri = await getVideoChunk(videoUri);
+      const suggestions = await getCaptionSuggestions(videoChunkUri, styleCaptions);
+      
+      setCaptionSuggestions(suggestions);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to generate captions.";
+      setCaptionError(errorMessage);
+      console.error('Error generating captions:', errorMessage);
+    } finally {
+      setIsGeneratingCaptions(false);
+    }
+  };
 
   const startRecording = async () => {
     if (!cameraRef.current || isRecording) return;
@@ -149,7 +185,7 @@ export default function CameraScreen() {
       // Start actual video recording
       const video = await cameraRef.current.recordAsync({
         maxDuration: MAX_RECORDING_TIME,
-        maxFileSize: 50 * 1024 * 1024, // 50MB limit
+        maxFileSize: 50 * 1024 * 1024, // 50MB limit, enforced by supabase free plan
         // need to specify this since we're passing videoBitrate to CameraView
         codec: "hvc1", // hvc1 is the codec recommended by chatgpt. Also good to later convert this into audio for whisper transcription
       });
@@ -170,6 +206,11 @@ export default function CameraScreen() {
         clearInterval(recordingTimer.current);
         recordingTimer.current = null;
       }
+      
+      // Also reset caption states
+      setCaption('');
+      setCaptionSuggestions([]);
+      setCaptionError(null);
       
     } catch (error) {
       console.error('Error during recording:', error);
@@ -286,6 +327,7 @@ export default function CameraScreen() {
     console.log('👤 Current User:', currentUser.name);
     console.log('📊 Current Retention Type:', retentionType);
     console.log('🎯 Selected Group ID:', selectedGroupId);
+    console.log('✍️ Caption:', caption);
     console.log('📄 Display Text:', getRetentionDisplayText());
 
     // Stop video playback before navigating
@@ -309,7 +351,8 @@ export default function CameraScreen() {
         pathname: '/group-selection',
         params: { 
           videoUri,
-          retentionType // Also pass retention type to group selection
+          caption,
+          retentionType
         }
       });
       return;
@@ -341,7 +384,7 @@ export default function CameraScreen() {
           type: 'video' as const,
           url: uploadResult.url, // ✅ Use uploaded URL instead of local file path
         },
-        caption: 'Check out my waffle! 🧇',
+        caption: caption || 'Check out my waffle! 🧇',
         retentionType: retentionType,
         groupId: selectedGroupId,
       };
@@ -511,6 +554,35 @@ export default function CameraScreen() {
             <View style={styles.controlButton} />
           </View>
 
+          {/* Caption Input and Suggestions */}
+          <View style={styles.captionContainer}>
+            <TextInput
+              style={styles.captionInput}
+              placeholder="Add a caption..."
+              placeholderTextColor="#A1A1AA"
+              value={caption}
+              onChangeText={setCaption}
+              maxLength={70}
+            />
+            {isGeneratingCaptions && (
+              <Text style={styles.captionStatusText}>🪄 Caption Genie is working...</Text>
+            )}
+            {captionError && (
+              <Text style={styles.captionStatusText}>😕 {captionError}</Text>
+            )}
+            <View style={styles.suggestionsContainer}>
+              {captionSuggestions.map((suggestion, index) => (
+                <TouchableOpacity
+                  key={index}
+                  style={styles.suggestionChip}
+                  onPress={() => setCaption(suggestion)}
+                >
+                  <Text style={styles.suggestionText}>{suggestion}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
           {/* Video Preview Controls */}
           <View style={styles.videoPreviewControls}>
             <TouchableOpacity 
@@ -550,9 +622,9 @@ export default function CameraScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <CameraView 
+      <CameraView
         ref={cameraRef}
-        style={styles.camera} 
+        style={styles.camera}
         facing={facing}
         mode="video"
         videoQuality="720p"
@@ -561,107 +633,99 @@ export default function CameraScreen() {
           console.error('Camera mount error:', error);
           Alert.alert('Camera Error', 'Failed to initialize camera. Please try again.');
         }}
-        videoBitrate={2000000} // 2Mbps for okay-ish quality?
+        videoBitrate={1000000} // 2Mbps for okay-ish quality?
+      />
 
-      >
-        {/* Header Controls */}
-        <View style={styles.headerControls}>
-          <TouchableOpacity style={styles.controlButton} onPress={handleClose}>
-            <X size={24} color="#FFFFFF" />
+      {/* Header Controls - Now an overlay */}
+      <View style={styles.headerControls}>
+        <TouchableOpacity style={styles.controlButton} onPress={handleClose}>
+          <X size={24} color="#FFFFFF" />
+        </TouchableOpacity>
+
+        {/* Group Selector - only show if we came from a specific group */}
+        {sourceGroupId && selectedGroup && (
+          <TouchableOpacity
+            style={styles.groupSelector}
+            onPress={() => setShowGroupDropdown(!showGroupDropdown)}
+          >
+            <Text style={styles.groupSelectorText}>{selectedGroup.name}</Text>
+            <ChevronDown size={16} color="#FFFFFF" />
           </TouchableOpacity>
+        )}
 
-          {/* Group Selector - only show if we came from a specific group */}
-          {sourceGroupId && selectedGroup && (
-            <TouchableOpacity 
-              style={styles.groupSelector}
-              onPress={() => setShowGroupDropdown(!showGroupDropdown)}
+        <TouchableOpacity style={styles.controlButton} onPress={toggleCameraFacing}>
+          <RotateCcw size={24} color="#FFFFFF" />
+        </TouchableOpacity>
+      </View>
+
+      {/* Retention Type Selector - Now an overlay */}
+      <View style={styles.retentionContainer}>
+        <TouchableOpacity style={styles.retentionButton} onPress={cycleRetentionType}>
+          <Text style={styles.retentionButtonText}>{getRetentionDisplayText()}</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Group Dropdown - Now an overlay */}
+      {showGroupDropdown && (
+        <View style={styles.groupDropdown}>
+          {groups.map((group) => (
+            <TouchableOpacity
+              key={group.id}
+              style={[
+                styles.groupDropdownOption,
+                selectedGroupId === group.id && styles.groupDropdownOptionActive
+              ]}
+              onPress={() => {
+                setSelectedGroupId(group.id);
+                setShowGroupDropdown(false);
+              }}
             >
-              <Text style={styles.groupSelectorText}>{selectedGroup.name}</Text>
-              <ChevronDown size={16} color="#FFFFFF" />
-            </TouchableOpacity>
-          )}
-
-          {/* Show indicator when no group is selected
-          {!sourceGroupId && (
-            <View style={styles.noGroupIndicator}>
-              <Text style={styles.noGroupText}>Choose groups after recording</Text>
-            </View>
-          )} */}
-
-          <TouchableOpacity style={styles.controlButton} onPress={toggleCameraFacing}>
-            <RotateCcw size={24} color="#FFFFFF" />
-          </TouchableOpacity>
-        </View>
-
-        {/* Retention Type Selector */}
-        <View style={styles.retentionContainer}>
-          <TouchableOpacity style={styles.retentionButton} onPress={cycleRetentionType}>
-            <Text style={styles.retentionButtonText}>{getRetentionDisplayText()}</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Group Dropdown */}
-        {showGroupDropdown && (
-          <View style={styles.groupDropdown}>
-            {groups.map((group) => (
-              <TouchableOpacity
-                key={group.id}
-                style={[
-                  styles.groupDropdownOption,
-                  selectedGroupId === group.id && styles.groupDropdownOptionActive
-                ]}
-                onPress={() => {
-                  setSelectedGroupId(group.id);
-                  setShowGroupDropdown(false);
-                }}
-              >
-                <View style={styles.groupAvatarSmall}>
-                  <Text style={styles.groupAvatarTextSmall}>
-                    {group.name.split(' ').map(word => word[0]).join('').slice(0, 2)}
-                  </Text>
-                </View>
-                <Text style={[
-                  styles.groupDropdownText,
-                  selectedGroupId === group.id && styles.groupDropdownTextActive
-                ]}>
-                  {group.name}
+              <View style={styles.groupAvatarSmall}>
+                <Text style={styles.groupAvatarTextSmall}>
+                  {group.name.split(' ').map(word => word[0]).join('').slice(0, 2)}
                 </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
-
-        {/* Recording Timer */}
-        {isRecording && (
-          <View style={styles.recordingTimer}>
-            <View style={styles.recordingDot} />
-            <Text style={styles.recordingText}>
-              {formatTime(recordingTime)}
-            </Text>
-          </View>
-        )}
-
-        {/* Bottom Controls */}
-        <View style={styles.bottomControls}>
-          {isRecording ? (
-            // Stop button when recording
-            <TouchableOpacity 
-              style={styles.stopButton}
-              onPress={stopRecording}
-            >
-              <Square size={24} color="#FFFFFF" fill="#FFFFFF" />
+              </View>
+              <Text style={[
+                styles.groupDropdownText,
+                selectedGroupId === group.id && styles.groupDropdownTextActive
+              ]}>
+                {group.name}
+              </Text>
             </TouchableOpacity>
-          ) : (
-            // Red record button when not recording
-            <TouchableOpacity 
-              style={styles.recordButton}
-              onPress={startRecording}
-            >
-              <View style={styles.recordButtonInner} />
-            </TouchableOpacity>
-          )}
+          ))}
         </View>
-      </CameraView>
+      )}
+
+      {/* Recording Timer - Now an overlay */}
+      {isRecording && (
+        <View style={styles.recordingTimer}>
+          <View style={styles.recordingDot} />
+          <Text style={styles.recordingText}>
+            {formatTime(recordingTime)}
+          </Text>
+        </View>
+      )}
+
+      {/* Bottom Controls - Now an overlay */}
+      <View style={styles.bottomControls}>
+        {isRecording ? (
+          // Stop button when recording
+          <TouchableOpacity
+            style={styles.stopButton}
+            onPress={stopRecording}
+          >
+            <Square size={24} color="#FFFFFF" fill="#FFFFFF" />
+          </TouchableOpacity>
+        ) : (
+          // Red record button when not recording
+          <TouchableOpacity
+            style={styles.recordButton}
+            onPress={startRecording}
+          >
+            <View style={styles.recordButtonInner} />
+          </TouchableOpacity>
+        )}
+      </View>
     </SafeAreaView>
   );
 }
@@ -672,7 +736,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#000000',
   },
   camera: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
   },
   permissionContainer: {
     flex: 1,
@@ -916,6 +980,48 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     opacity: 0.8,
     marginTop: 2,
+  },
+  captionContainer: {
+    position: 'absolute',
+    bottom: 120,
+    left: 20,
+    right: 20,
+  },
+  captionInput: {
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontFamily: 'Inter-Regular',
+    fontSize: 16,
+    color: '#FFFFFF',
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  captionStatusText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    color: '#FFFFFF',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  suggestionsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+  },
+  suggestionChip: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    margin: 4,
+  },
+  suggestionText: {
+    color: '#FFFFFF',
+    fontFamily: 'Inter-Medium',
+    fontSize: 12,
   },
   videoPreviewControls: {
     position: 'absolute',
