@@ -56,12 +56,6 @@ export default function ChatScreen() {
     setViewableItems(visibleIds);
   }, []);
 
-  // Define handleViewRecap early so it can be used in renderMessage
-  const handleViewRecap = useCallback((messageId: string) => {
-    markMessageViewed(messageId);
-    // Mock AI recap
-    alert('AI Catch-up Recap: This waffle shows a cozy coffee moment at the recommended shop. The atmosphere looks perfect for some quality coffee time, and it seems like the group\'s suggestion was a hit!');
-  }, [markMessageViewed]);
 
   // FlatList render function
   const renderMessage: ListRenderItem<any> = useCallback(({ item: message }) => (
@@ -71,10 +65,9 @@ export default function ChatScreen() {
       currentUserId={currentUser?.id || ''}
       onLike={likeMessage}
       onReaction={addReaction}
-      onViewRecap={handleViewRecap}
       isInViewport={viewableItems.includes(message.id)}
     />
-  ), [currentUser?.id, likeMessage, addReaction, viewableItems, handleViewRecap]);
+  ), [currentUser?.id, likeMessage, addReaction, viewableItems]);
 
   const group = groups.find(g => g.id === groupId);
   const groupMessages = messages.filter(m => m.groupId === groupId).sort(

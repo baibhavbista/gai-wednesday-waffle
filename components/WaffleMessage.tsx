@@ -13,6 +13,7 @@ import * as VideoThumbnails from 'expo-video-thumbnails';
 import { Heart, MessageCircle, Clock, Eye, Smile, Play, X, Pause } from 'lucide-react-native';
 import { WaffleMessage as WaffleMessageType } from '@/store/useWaffleStore';
 import { useRouter } from 'expo-router';
+import { fetchWaffleRecap } from '@/lib/ai-service';
 
 
 const { width, height } = Dimensions.get('window');
@@ -22,7 +23,6 @@ interface WaffleMessageProps {
   currentUserId: string;
   onLike: (messageId: string) => void;
   onReaction: (messageId: string, emoji: string) => void;
-  onViewRecap: (messageId: string) => void;
   isInViewport?: boolean;
 }
 
@@ -33,7 +33,6 @@ export default function WaffleMessage({
   currentUserId, 
   onLike, 
   onReaction, 
-  onViewRecap,
   isInViewport = false
 }: WaffleMessageProps) {
   const [showReactions, setShowReactions] = useState(false);
@@ -41,6 +40,10 @@ export default function WaffleMessage({
   const [isPlaying, setIsPlaying] = useState(true);
   const [showControls, setShowControls] = useState(true);
   const [videoThumbnail, setVideoThumbnail] = useState<string | null>(null);
+  const [showRecapModal, setShowRecapModal] = useState(false);
+  const [recapContent, setRecapContent] = useState<string | null>(null);
+  const [recapLoading, setRecapLoading] = useState(false);
+  const [recapError, setRecapError] = useState<string | null>(null);
   // No longer need the custom useInView hook - using FlatList viewability
   const router = useRouter();
 
@@ -90,6 +93,33 @@ export default function WaffleMessage({
     setIsPlaying(!isPlaying);
     setShowControls(true);
     hideControlsTimer();
+  };
+
+  const handleRecapPress = async () => {
+    if (!message.content.url) {
+      console.warn('No content URL available for recap');
+      return;
+    }
+
+    setShowRecapModal(true);
+    setRecapLoading(true);
+    setRecapError(null);
+    setRecapContent(null);
+
+    try {
+      const result = await fetchWaffleRecap(message.content.url);
+      
+      if (result.error || !result.recap) {
+        setRecapError(result.error || 'No recap available');
+      } else {
+        setRecapContent(result.recap);
+      }
+    } catch (error) {
+      console.error('Failed to fetch recap:', error);
+      setRecapError('Failed to load recap');
+    } finally {
+      setRecapLoading(false);
+    }
   };
 
   const getTimeAgo = (date: Date) => {
@@ -216,7 +246,7 @@ export default function WaffleMessage({
           {message.content.type !== 'text' && (
             <TouchableOpacity 
               style={styles.actionButton}
-              onPress={() => onViewRecap(message.id)}
+              onPress={handleRecapPress}
             >
               <MessageCircle size={16} color="#9CA3AF" />
               <Text style={styles.actionText}>Recap</Text>
@@ -304,6 +334,54 @@ export default function WaffleMessage({
             </View>
           )}
         </TouchableOpacity>
+      </Modal>
+
+      {/* AI Recap Modal */}
+      <Modal
+        visible={showRecapModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowRecapModal(false)}
+      >
+        <View style={styles.recapModalContainer}>
+          <View style={styles.recapHeader}>
+            <Text style={styles.recapTitle}>AI Catch-up Recap</Text>
+            <TouchableOpacity
+              style={styles.recapCloseButton}
+              onPress={() => setShowRecapModal(false)}
+            >
+              <X size={24} color="#374151" />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.recapContent}>
+            {recapLoading ? (
+              <View style={styles.recapLoadingContainer}>
+                <Text style={styles.recapLoadingText}>Generating recap...</Text>
+              </View>
+            ) : recapError ? (
+              <View style={styles.recapErrorContainer}>
+                <Text style={styles.recapErrorText}>{recapError}</Text>
+                <TouchableOpacity
+                  style={styles.recapRetryButton}
+                  onPress={handleRecapPress}
+                >
+                  <Text style={styles.recapRetryText}>Try Again</Text>
+                </TouchableOpacity>
+              </View>
+            ) : recapContent ? (
+              <View style={styles.recapTextContainer}>
+                <Text style={styles.recapText}>{recapContent}</Text>
+              </View>
+            ) : null}
+          </View>
+
+          <View style={styles.recapFooter}>
+            <Text style={styles.recapFooterText}>
+              AI-generated summary • {getTimeAgo(message.createdAt)}
+            </Text>
+          </View>
+        </View>
       </Modal>
     </View>
   );
@@ -543,5 +621,86 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     borderRadius: 25,
     padding: 10,
+  },
+  // Recap Modal Styles
+  recapModalContainer: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  recapHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  recapTitle: {
+    fontSize: 18,
+    fontFamily: 'Poppins-SemiBold',
+    color: '#1F2937',
+  },
+  recapCloseButton: {
+    padding: 8,
+  },
+  recapContent: {
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingVertical: 24,
+  },
+  recapLoadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  recapLoadingText: {
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
+    color: '#9CA3AF',
+  },
+  recapErrorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  recapErrorText: {
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
+    color: '#EF4444',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  recapRetryButton: {
+    backgroundColor: '#F97316',
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+  },
+  recapRetryText: {
+    fontSize: 14,
+    fontFamily: 'Poppins-SemiBold',
+    color: '#FFFFFF',
+  },
+  recapTextContainer: {
+    flex: 1,
+  },
+  recapText: {
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
+    color: '#374151',
+    lineHeight: 24,
+  },
+  recapFooter: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+  },
+  recapFooterText: {
+    fontSize: 12,
+    fontFamily: 'Inter-Regular',
+    color: '#9CA3AF',
+    textAlign: 'center',
   },
 });

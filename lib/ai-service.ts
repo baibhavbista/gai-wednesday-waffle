@@ -182,4 +182,69 @@ export const getConversationStarters = async (
     console.error('Error fetching conversation starters:', error);
     throw error;
   }
-}; 
+};
+
+export interface AIRecapResponse {
+  recap: string | null;
+  error?: string;
+}
+
+/**
+ * Fetch AI-generated recap for a waffle message
+ */
+export async function fetchWaffleRecap(contentUrl: string): Promise<AIRecapResponse> {
+  try {
+    console.log('Fetching AI recap for content URL:', contentUrl);
+    
+    const { data, error } = await supabase
+      .from('transcripts')
+      .select('ai_recap')
+      .eq('content_url', contentUrl)
+      .single();
+
+    if (error) {
+      console.error('Error fetching AI recap:', error);
+      return {
+        recap: null,
+        error: 'Failed to fetch recap'
+      };
+    }
+
+    if (!data?.ai_recap) {
+      console.log('No AI recap found for this waffle');
+      return {
+        recap: null,
+        error: 'No recap available for this waffle yet'
+      };
+    }
+
+    console.log('Successfully fetched AI recap');
+    return {
+      recap: data.ai_recap
+    };
+  } catch (error) {
+    console.error('Unexpected error fetching AI recap:', error);
+    return {
+      recap: null,
+      error: 'An unexpected error occurred'
+    };
+  }
+}
+
+/**
+ * Check if a waffle has an AI recap available
+ */
+export async function hasWaffleRecap(contentUrl: string): Promise<boolean> {
+  try {
+    const { data, error } = await supabase
+      .from('transcripts')
+      .select('ai_recap')
+      .eq('content_url', contentUrl)
+      .single();
+
+    return !error && !!data?.ai_recap;
+  } catch (error) {
+    console.error('Error checking recap availability:', error);
+    return false;
+  }
+} 
