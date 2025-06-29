@@ -9,7 +9,7 @@ import {
   Alert,
   Platform,
 } from 'react-native';
-import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
+import { CameraView, CameraType, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import * as MediaLibrary from 'expo-media-library';
 import { RotateCcw, X, Square, Send, Download, ChevronDown } from 'lucide-react-native';
 import { useWaffleStore } from '@/store/useWaffleStore';
@@ -24,6 +24,7 @@ const MAX_RECORDING_TIME = 300; // 5 minutes in seconds
 export default function CameraScreen() {
   const [facing, setFacing] = useState<CameraType>('front');
   const [permission, requestPermission] = useCameraPermissions();
+  const [microphonePermission, requestMicrophonePermission] = useMicrophonePermissions();
   const [mediaLibraryPermission, requestMediaLibraryPermission] = MediaLibrary.usePermissions();
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -40,7 +41,7 @@ export default function CameraScreen() {
   const { groups, addMessage, currentUser, currentGroupId, isLoading } = useWaffleStore();
   const router = useRouter();
   const params = useLocalSearchParams();
-  const recordingTimer = useRef<NodeJS.Timeout | null>(null);
+  const recordingTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Video player setup
   const player = useVideoPlayer(videoUri || '', (player) => {
@@ -146,7 +147,10 @@ export default function CameraScreen() {
       // Start actual video recording
       const video = await cameraRef.current.recordAsync({
         maxDuration: MAX_RECORDING_TIME,
-        // videoQuality: '720p'
+        quality: '720p',
+        mute: false,
+        maxFileSize: 50 * 1024 * 1024, // 50MB limit
+        // videoBitrate: 2000000, // 2Mbps for good quality
       });
 
       console.log('Recording completed, video:', video);
@@ -179,7 +183,8 @@ export default function CameraScreen() {
       }
       
       // Only show error if it's not a cancellation
-      if (!error.message?.includes('cancelled') && !error.message?.includes('stopped')) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (!errorMessage.includes('cancelled') && !errorMessage.includes('stopped')) {
         Alert.alert('Error', 'Failed to record video');
       }
     }
@@ -344,15 +349,27 @@ export default function CameraScreen() {
     }
   };
 
-  if (!permission) {
+  if (!permission || !microphonePermission) {
     return <View style={styles.container} />;
   }
 
-  if (!permission.granted) {
+  if (!permission.granted || !microphonePermission.granted) {
+    const needsCamera = !permission.granted;
+    const needsMicrophone = !microphonePermission.granted;
+    
     return (
       <View style={styles.permissionContainer}>
-        <Text style={styles.permissionText}>We need your permission to show the camera</Text>
-        <TouchableOpacity style={styles.permissionButton} onPress={requestPermission}>
+        <Text style={styles.permissionText}>
+          We need your permission to {needsCamera && needsMicrophone ? 'access the camera and microphone' : 
+          needsCamera ? 'show the camera' : 'access the microphone'}
+        </Text>
+        <TouchableOpacity 
+          style={styles.permissionButton} 
+          onPress={() => {
+            if (needsCamera) requestPermission();
+            if (needsMicrophone) requestMicrophonePermission();
+          }}
+        >
           <Text style={styles.permissionButtonText}>Grant Permission</Text>
         </TouchableOpacity>
       </View>
@@ -512,6 +529,10 @@ export default function CameraScreen() {
         mode="video"
         videoQuality="720p"
         mirror={facing === 'front' ? true : false}
+        onMountError={(error) => {
+          console.error('Camera mount error:', error);
+          Alert.alert('Camera Error', 'Failed to initialize camera. Please try again.');
+        }}
       >
         {/* Header Controls */}
         <View style={styles.headerControls}>
