@@ -13,7 +13,7 @@ const { OpenAI } = require('openai');
 const { createClient } = require('@supabase/supabase-js');
 const { Pool } = require('pg');
 const { URL } = require('url'); // Use Node.js's built-in URL parser
-const { zodTextFormat } = require("openai/helpers/zod");
+const { zodResponseFormat } = require("openai/helpers/zod");
 const { z } = require("zod");
 
 const Suggestions = z.object({
@@ -224,16 +224,14 @@ app.post(
         messages: [{ role: 'system', content: prompt }],
         max_tokens: 120,
         temperature: 0.7,
-        text: {
-          format: zodTextFormat(Suggestions, 'suggestionsHolder'),
-        }
+        response_format: zodResponseFormat(Suggestions, 'suggestions'),
       });
 
-      const suggestionsHolder = response.output_parsed;
+      const suggestions = response.choices[0].message.parsed;
 
       // console logs for suggestions
-      console.log('Caption Suggestions:', suggestionsHolder);
-      res.json(suggestionsHolder);
+      console.log('Caption Suggestions:', suggestions);
+      res.json({ suggestions });
     } catch (error) {
       console.error('Error in caption generation pipeline:', error);
       res.status(500).json({ error: 'An error occurred during caption generation.' });
@@ -540,26 +538,15 @@ app.post('/ai/convo-starter', authenticateToken, async (req, res) => {
       messages: [{ role: 'system', content: prompt }],
       temperature: 0.8,
       max_tokens: 80,
-      text: {
-        format: zodTextFormat(Suggestions, 'suggestionsHolder'),
-      }
+      response_format: zodResponseFormat(Suggestions, 'suggestions'),
     });
 
-    const suggestionsHolder = response.output_parsed;
+    console.log('[ConvoStarter] ✓ GPT raw response:', response.choices[0].message.parsed);
 
-
-    console.log('[ConvoStarter] ✓ GPT raw response:', suggestionsHolder);
-
-    let prompts;
-    try {
-      prompts = JSON.parse(suggestionsHolder);
-    } catch (_) {
-      console.warn('[ConvoStarter] ⚠ Failed to parse GPT JSON, using fallback');
-      prompts = [
-        "Tell us something new you're excited about!",
-        'Got any mid-week adventures to share?'
-      ];
-    }
+    const prompts = response.choices[0].message.parsed?.suggestions || [
+      "Tell us something new you're excited about!",
+      'Got any mid-week adventures to share?'
+    ];
 
     console.log('[ConvoStarter] ✓ Returning prompts', prompts);
     res.json({ prompts });
