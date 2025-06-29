@@ -13,6 +13,13 @@ const { OpenAI } = require('openai');
 const { createClient } = require('@supabase/supabase-js');
 const { Pool } = require('pg');
 const { URL } = require('url'); // Use Node.js's built-in URL parser
+const { zodTextFormat } = require("openai/helpers/zod");
+const { z } = require("zod");
+
+const Suggestions = z.object({
+  suggestions: z.array(z.string()),
+});
+
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -217,14 +224,16 @@ app.post(
         messages: [{ role: 'system', content: prompt }],
         max_tokens: 120,
         temperature: 0.7,
-        response_format: { type: 'json_object' },
+        text: {
+          format: zodTextFormat(Suggestions, 'suggestionsHolder'),
+        }
       });
 
-      const suggestions = JSON.parse(response.choices[0].message.content);
+      const suggestionsHolder = response.output_parsed;
 
       // console logs for suggestions
-      console.log('Caption Suggestions:', suggestions);
-      res.json({ suggestions });
+      console.log('Caption Suggestions:', suggestionsHolder);
+      res.json(suggestionsHolder);
     } catch (error) {
       console.error('Error in caption generation pipeline:', error);
       res.status(500).json({ error: 'An error occurred during caption generation.' });
@@ -526,19 +535,24 @@ app.post('/ai/convo-starter', authenticateToken, async (req, res) => {
 
     console.log('[ConvoStarter] → Sending prompt to GPT (first 300 chars):', prompt.slice(0, 300));
 
-    const gptResp = await openai.chat.completions.create({
+    const response = await openai.chat.completions.create({
       model: 'gpt-4o',
       messages: [{ role: 'system', content: prompt }],
       temperature: 0.8,
       max_tokens: 80,
-      response_format: { type: 'json_object' },
+      text: {
+        format: zodTextFormat(Suggestions, 'suggestionsHolder'),
+      }
     });
 
-    console.log('[ConvoStarter] ✓ GPT raw response:', gptResp.choices[0]?.message?.content?.slice(0, 200));
+    const suggestionsHolder = response.output_parsed;
+
+
+    console.log('[ConvoStarter] ✓ GPT raw response:', suggestionsHolder);
 
     let prompts;
     try {
-      prompts = JSON.parse(gptResp.choices[0].message.content);
+      prompts = JSON.parse(suggestionsHolder);
     } catch (_) {
       console.warn('[ConvoStarter] ⚠ Failed to parse GPT JSON, using fallback');
       prompts = [
