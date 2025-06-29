@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import * as MediaLibrary from 'expo-media-library';
-import { Eclipse as Flip, X, Square, Send, Download, ChevronDown } from 'lucide-react-native';
+import { RotateCcw, X, Square, Send, Download, ChevronDown } from 'lucide-react-native';
 import { useWaffleStore } from '@/store/useWaffleStore';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { VideoView, useVideoPlayer } from 'expo-video';
@@ -146,7 +146,7 @@ export default function CameraScreen() {
       // Start actual video recording
       const video = await cameraRef.current.recordAsync({
         maxDuration: MAX_RECORDING_TIME,
-        quality: '720p',
+        // videoQuality: '720p'
       });
 
       console.log('Recording completed, video:', video);
@@ -510,6 +510,8 @@ export default function CameraScreen() {
         style={styles.camera} 
         facing={facing}
         mode="video"
+        videoQuality="720p"
+        mirror={facing === 'front' ? true : false}
       >
         {/* Header Controls */}
         <View style={styles.headerControls}>
@@ -536,7 +538,7 @@ export default function CameraScreen() {
           )} */}
 
           <TouchableOpacity style={styles.controlButton} onPress={toggleCameraFacing}>
-            <Flip size={24} color="#FFFFFF" />
+            <RotateCcw size={24} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
 
