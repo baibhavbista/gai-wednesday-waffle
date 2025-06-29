@@ -231,7 +231,7 @@ app.post(
 
       console.log("raw caption suggestions", ret);
 
-    const suggestions = (ret.suggestions && ret.suggestions.length > 0) ? ret.suggestions || [];
+    const suggestions = (ret.suggestions && ret.suggestions.length > 0) ? ret.suggestions : [];
 
       // console logs for suggestions
       console.log('Caption Suggestions:', suggestions);
