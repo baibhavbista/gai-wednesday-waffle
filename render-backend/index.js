@@ -338,6 +338,31 @@ app.post('/process-full-video', async (req, res) => {
     // Convert JS array to pgvector literal string e.g. '[0.1, 0.2, ...]'
     const embeddingVectorLiteral = '[' + embeddingArray.join(',') + ']';
 
+    // 4.5. Generate AI recap for catch-up feature
+    console.log('Generating AI recap for transcript...');
+    let aiRecap = null;
+    try {
+      const recapResponse = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [{
+          role: 'system',
+          content: `You are a friendly assistant that creates concise summaries for friend groups. 
+
+Create an 80-word summary of this waffle (short video update) that captures the key moments and mood. Write in a warm, conversational tone as if you're helping friends catch up on what they missed. Focus on the most interesting or meaningful parts.
+
+Transcript: "${transcript.text}"`
+        }],
+        max_tokens: 120,
+        temperature: 0.7,
+      });
+      
+      aiRecap = recapResponse.choices[0]?.message?.content?.trim();
+      console.log('Generated AI recap:', aiRecap);
+    } catch (recapError) {
+      console.error('Failed to generate AI recap:', recapError);
+      // Continue without recap - it's not critical for the main flow
+    }
+
     // 5. Upsert into transcripts table
     console.log('Upserting transcript & embedding into public.transcripts...');
 
@@ -365,15 +390,16 @@ app.post('/process-full-video', async (req, res) => {
       const canonicalContentUrl = urlRows?.[0]?.content_url || fileName; // fall back to file name path
 
       const upsertQuery = `
-      INSERT INTO public.transcripts (content_url, text, embedding)
-      VALUES ($1, $2, $3::vector)
+      INSERT INTO public.transcripts (content_url, text, embedding, ai_recap)
+      VALUES ($1, $2, $3::vector, $4)
       ON CONFLICT (content_url) DO UPDATE
         SET text = EXCLUDED.text,
             embedding = EXCLUDED.embedding,
+            ai_recap = EXCLUDED.ai_recap,
             created_at = NOW();
       `;
 
-      await dbClient.query(upsertQuery, [canonicalContentUrl, transcript.text, embeddingVectorLiteral]);
+      await dbClient.query(upsertQuery, [canonicalContentUrl, transcript.text, embeddingVectorLiteral, aiRecap]);
 
       console.log(`Successfully upserted transcript for content_url: ${canonicalContentUrl}`);
     } catch (dbError) {
@@ -430,14 +456,14 @@ app.post('/ai/convo-starter', authenticateToken, async (req, res) => {
   }
 
   // Simple rate-limit check
-  const throttleKey = `${userUid}-${groupId}`;
-  const now = Date.now();
-  if (convoStarterThrottle.has(throttleKey) && now - convoStarterThrottle.get(throttleKey) < THROTTLE_WINDOW_MS) {
-    console.warn('[ConvoStarter] ✖ Rate limited for key', throttleKey);
-    return res.status(429).json({ error: 'Too many requests – please wait a moment.' });
-  }
-  convoStarterThrottle.set(throttleKey, now);
-  console.log('[ConvoStarter] ✓ Passed throttle check');
+  // const throttleKey = `${userUid}-${groupId}`;
+  // const now = Date.now();
+  // if (convoStarterThrottle.has(throttleKey) && now - convoStarterThrottle.get(throttleKey) < THROTTLE_WINDOW_MS) {
+  //   console.warn('[ConvoStarter] ✖ Rate limited for key', throttleKey);
+  //   return res.status(429).json({ error: 'Too many requests – please wait a moment.' });
+  // }
+  // convoStarterThrottle.set(throttleKey, now);
+  // console.log('[ConvoStarter] ✓ Passed throttle check');
 
   let dbClient;
   try {
@@ -496,7 +522,7 @@ app.post('/ai/convo-starter', authenticateToken, async (req, res) => {
 
     const snippets = rows.map(r => (r.text || '').slice(0, 120));
 
-    const prompt = `You are Prompt-Me-Please, an assistant that writes playful conversation starters for a small friend group.\nA user is about to record a new waffle but seems unsure what to say. Using the recent snippets below, craft exactly 2 fun, engaging prompts that would inspire the user to share an update.\nBe sure to: \n• Reference any ongoing activities or plans they mentioned earlier.\n• Keep each prompt ≤100 characters.\n• Return ONLY a JSON array of two strings.\n\nRecent snippets:\n${snippets.map(s => '"' + s.replace(/"/g, '') + '"').join('\n')}`;
+    const prompt = `You are Prompt-Me-Please, an assistant that writes playful conversation starters for a small friend group.\nA user is about to record a new short video but seems unsure what to say. Using the recent snippets below, craft exactly 2 fun, engaging prompts that would inspire the user to share an update.\nBe sure to: \n• Reference any ongoing activities or plans they mentioned earlier.\n• Keep each prompt ≤100 characters.\n• Return ONLY a JSON array of two strings.\n\nRecent snippets:\n${snippets.map(s => '"' + s.replace(/"/g, '') + '"').join('\n')}`;
 
     console.log('[ConvoStarter] → Sending prompt to GPT (first 300 chars):', prompt.slice(0, 300));
 
