@@ -13,17 +13,47 @@ import {
 import { useWaffleStore } from '@/store/useWaffleStore';
 import { useAuth } from '@/hooks/useAuth';
 import { Settings, Bell, Shield, CircleHelp as HelpCircle, LogOut, ChevronRight, User, Camera } from 'lucide-react-native';
+import { wafflesService } from '@/lib/database-service';
 
 export default function ProfileScreen() {
   const { currentUser, groups, isLoading } = useWaffleStore();
   const { signOut, isReady } = useAuth();
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [signingOut, setSigningOut] = useState(false);
+  const [totalWaffles, setTotalWaffles] = useState<number | null>(null);
 
-  // Calculate stats from available data - handle loading states
-  const totalMembers = groups.reduce((total, group) => total + group.members.length, 0);
-  // For now, we'll use a placeholder for waffles until we implement message counting
-  const totalWaffles = 0;
+  // Fetch total waffles shared by the user
+  React.useEffect(() => {
+    let mounted = true;
+    (async () => {
+      if (currentUser) {
+        try {
+          const count = await wafflesService.countForUser(currentUser.id);
+          if (mounted) setTotalWaffles(count);
+        } catch (err) {
+          console.error('Error fetching waffle count:', err);
+          if (mounted) setTotalWaffles(0);
+        }
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [currentUser]);
+
+  // Calculate unique friends across all groups (exclude duplicates and current user)
+  const uniqueFriendIds = React.useMemo(() => {
+    const ids = new Set<string>();
+    groups.forEach((group) => {
+      group.members.forEach((member) => {
+        if (member.id !== currentUser?.id) {
+          ids.add(member.id);
+        }
+      });
+    });
+    return ids;
+  }, [groups, currentUser]);
+  const totalMembers = uniqueFriendIds.size;
 
   const settingsOptions = [
     {

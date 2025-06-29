@@ -230,6 +230,23 @@ export const wafflesService = {
     if (__DEV__ && !error) console.log('✅ Waffle deleted successfully')
     
     return { error }
+  },
+
+  // Count waffles created by a specific user (cheap aggregate)
+  async countForUser(userId: string): Promise<number> {
+    if (__DEV__) console.log('🔢 Counting waffles for user:', userId);
+
+    const { count, error } = await supabase
+      .from('waffles')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId);
+
+    if (error) {
+      if (__DEV__) console.error('❌ Error counting waffles:', error);
+      throw error;
+    }
+
+    return count ?? 0;
   }
 }
 

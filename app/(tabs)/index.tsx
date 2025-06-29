@@ -19,12 +19,14 @@ import { useRouter } from 'expo-router';
 import { useRealtime } from '@/hooks/useRealtime';
 import { useAuth } from '@/hooks/useAuth';
 import { Plus, MessageCircle, Clock, Users, UserPlus } from 'lucide-react-native';
+import { useIsFocused } from '@react-navigation/native';
 
 export default function ChatsScreen() {
   const { groups, currentUser, isLoading, hasGroupsInitLoaded, error, loadUserGroups, joinGroup, createGroup, clearData } = useWaffleStore();
   const { status, setCallbacks, subscribeToAllGroupsSummary } = useRealtime();
   const { isReady, isAuthenticated } = useAuth();
   const router = useRouter();
+  const isFocused = useIsFocused();
 
   // Group management state
   const [showJoinModal, setShowJoinModal] = useState(false);
@@ -60,12 +62,12 @@ export default function ChatsScreen() {
 
   // Subscribe to all groups for real-time last message updates
   useEffect(() => {
-    if (isAuthenticated && groups.length > 0) {
+    if (isFocused && isAuthenticated && groups.length > 0) {
       const groupIds = groups.map(group => group.id);
       subscribeToAllGroupsSummary(groupIds);
       if (__DEV__) console.log('📋 Chats screen subscribed to', groupIds.length, 'groups for real-time updates');
     }
-  }, [isAuthenticated, groups]);
+  }, [isFocused, isAuthenticated, groups]);
 
   const handleJoinGroup = async () => {
     if (!inviteCode.trim()) {
@@ -119,7 +121,7 @@ export default function ChatsScreen() {
       if (error instanceof Error) {
         if (error.message === 'NETWORK_ERROR') {
           errorTitle = 'Connection Problem';
-          errorMessage = 'Can\'t connect to the server. Please check your internet connection and try again.';
+          errorMessage = 'Cannot connect to the server. Please check your internet connection and try again.';
         } else {
           errorMessage = error.message;
         }

@@ -125,7 +125,6 @@ export default function ChatScreen() {
           text: messageText.trim(),
         },
         caption: messageText.trim(),
-        retentionType: '7-day',
         groupId: groupId,
       });
       
@@ -434,3 +433,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#F3F4F6',
   },
 });
+
+// Unmount this screen when it loses focus to clean up realtime listeners
+export const unstable_settings = { unmountOnBlur: true };
