@@ -67,9 +67,19 @@ export default function RootLayout() {
   // Show loading spinner while checking auth or loading profile
   if (loading || (session && profileLoading)) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }}>
-        <ActivityIndicator size="large" color="#f59e0b" />
-        <Text style={{ color: '#fff', marginTop: 16, fontSize: 16 }}>
+      <View style={{ 
+        flex: 1, 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        backgroundColor: '#FFFFFF'
+      }}>
+        <ActivityIndicator size="large" color="#F97316" />
+        <Text style={{ 
+          color: '#1F2937',
+          marginTop: 16, 
+          fontSize: 16,
+          fontFamily: 'Inter-Regular'
+        }}>
           {loading ? 'Checking authentication...' : 'Loading profile...'}
         </Text>
       </View>
@@ -87,7 +97,7 @@ export default function RootLayout() {
           <Stack.Screen name="auth/callback" />
           <Stack.Screen name="+not-found" />
         </Stack>
-        <StatusBar style="auto" />
+        <StatusBar style="dark" />
       </>
     );
   }

@@ -706,7 +706,7 @@ export default function CameraScreen() {
             <TextInput
               style={styles.captionInput}
               placeholder="Add a caption..."
-              placeholderTextColor="#A1A1AA"
+              placeholderTextColor="#9CA3AF"
               value={caption}
               onChangeText={setCaption}
               maxLength={70}
@@ -880,7 +880,7 @@ export default function CameraScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000000',
+    backgroundColor: '#FFFFFF',
   },
   camera: {
     ...StyleSheet.absoluteFillObject,
@@ -889,13 +889,13 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#1F2937',
+    backgroundColor: '#FFFFFF',
     paddingHorizontal: 40,
   },
   permissionText: {
     fontSize: 18,
     fontFamily: 'Inter-Regular',
-    color: '#FFFFFF',
+    color: '#1F2937',
     textAlign: 'center',
     marginBottom: 24,
   },
@@ -927,7 +927,7 @@ const styles = StyleSheet.create({
   },
   retentionContainer: {
     position: 'absolute',
-    top: 80,
+    top: 150,
     right: 20,
     alignItems: 'center',
   },
@@ -1019,9 +1019,9 @@ const styles = StyleSheet.create({
   },
   recordingTimer: {
     position: 'absolute',
-    top: 80,
-    left: 0,
-    right: 0,
+    top: 140,
+    // width just enough to fit the text
+    width: 'auto',
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
@@ -1092,7 +1092,7 @@ const styles = StyleSheet.create({
   // Video Preview Styles
   videoPreviewContainer: {
     flex: 1,
-    backgroundColor: '#000000',
+    backgroundColor: '#FFFFFF',
   },
   videoPlayer: {
     flex: 1,
@@ -1135,16 +1135,16 @@ const styles = StyleSheet.create({
     right: 20,
   },
   captionInput: {
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 12,
     fontFamily: 'Inter-Regular',
     fontSize: 16,
-    color: '#FFFFFF',
+    color: '#1F2937',
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
+    borderColor: 'rgba(0, 0, 0, 0.1)',
   },
   captionStatusText: {
     fontFamily: 'Inter-Regular',
