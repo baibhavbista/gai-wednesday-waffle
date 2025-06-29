@@ -27,8 +27,74 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANO
 const serviceRoleClient = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
 // Initialize Postgres pool
+console.log('Validating database connection string...');
+
+// Parse and validate connection string
+const validateDbUrl = (url) => {
+  try {
+    if (!url) {
+      return { isValid: false, error: 'Database URL is missing' };
+    }
+
+    // Basic structure check
+    if (!url.startsWith('postgresql://')) {
+      return { isValid: false, error: 'URL must start with postgresql://' };
+    }
+
+    // Parse URL (mask password in logs)
+    const maskedUrl = url.replace(/:([^:@]+)@/, ':****@');
+    console.log('Database URL format:', maskedUrl);
+
+    // Extract components
+    const match = url.match(/postgresql:\/\/([^:]+):([^@]+)@([^:]+):(\d+)\/(.+)/);
+    if (!match) {
+      return { isValid: false, error: 'Invalid URL format' };
+    }
+
+    const [, user, password, host, port, database] = match;
+    const components = {
+      user,
+      host,
+      port,
+      database,
+      hasPassword: !!password
+    };
+
+    console.log('Connection components:', components);
+    return { isValid: true, components };
+  } catch (error) {
+    return { isValid: false, error: error.message };
+  }
+};
+
+const dbUrlValidation = validateDbUrl(process.env.SUPABASE_DB_URL);
+if (!dbUrlValidation.isValid) {
+  console.error('❌ Invalid database URL:', dbUrlValidation.error);
+  console.log('Expected format: postgresql://postgres:[PASSWORD]@db.[YOUR-PROJECT-REF].supabase.co:5432/postgres');
+} else {
+  console.log('✅ Database URL format is valid');
+}
+
+// Extract host from connection string
+const dbHost = dbUrlValidation.isValid ? dbUrlValidation.components.host : null;
+if (!dbHost) {
+  console.error('❌ Could not extract database host from connection string');
+}
+
 const pool = new Pool({
   connectionString: process.env.SUPABASE_DB_URL,
+  // Force IPv4 using host from connection string
+  host: dbHost,
+  ssl: { rejectUnauthorized: false },
+  // Add timeouts
+  connectionTimeoutMillis: 5000,
+  idleTimeoutMillis: 30000,
+  max: 20,
+});
+
+// Add error handler for pool
+pool.on('error', (err) => {
+  console.error('Unexpected error on idle client', err);
 });
 
 // Use multer for handling multipart/form-data (file uploads)
@@ -264,14 +330,42 @@ app.post('/process-full-video', async (req, res) => {
 
     // 4. Update the database with the transcript
     console.log('Connecting to database to update transcript...');
-    const dbClient = await pool.connect();
+    console.log('Database connection details:', {
+      host: pool.options.host,
+      port: pool.options.port,
+      database: pool.options.database,
+      user: pool.options.user,
+      ssl: !!pool.options.ssl,
+    });
+
+    let dbClient;
     try {
-      const query = 'UPDATE public.waffles SET ai_transcript = $1 WHERE id = $2';
-      await dbClient.query(query, [transcript.text, waffleId]);
-      console.log(`Successfully updated transcript for waffle ${waffleId}.`);
+      dbClient = await pool.connect();
+      console.log('Successfully connected to database');
+
+      const query = 'UPDATE public.waffles SET ai_transcript = $1 WHERE id = $2 RETURNING id';
+      const result = await dbClient.query(query, [transcript.text, waffleId]);
+      
+      if (result.rowCount === 0) {
+        console.warn(`No waffle found with ID ${waffleId}`);
+      } else {
+        console.log(`Successfully updated transcript for waffle ${waffleId}`);
+      }
+    } catch (dbError) {
+      console.error('Database error details:', {
+        code: dbError.code,
+        errno: dbError.errno,
+        syscall: dbError.syscall,
+        address: dbError.address,
+        port: dbError.port,
+        message: dbError.message,
+      });
+      throw dbError;
     } finally {
-      dbClient.release();
-      console.log('Database connection released.');
+      if (dbClient) {
+        dbClient.release();
+        console.log('Database connection released');
+      }
     }
 
     console.log(`✅ Successfully finished processing for waffle ID: ${waffleId}`);
