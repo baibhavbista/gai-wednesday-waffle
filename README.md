@@ -156,7 +156,7 @@ prompts_feedback (id, prompt_text, user_reaction, created_at)
 graph TD
     A[User uploads video] --> B[Supabase Storage]
     B --> C[Edge Function: /tts]
-    C --> D[Whisper STT]
+    C --> D[Whisper TTS]
     D --> E[Store transcript + embeddings]
     E --> F[Vector similarity search]
     F --> G[GPT-4o prompt generation]

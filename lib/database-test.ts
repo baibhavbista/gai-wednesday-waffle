@@ -29,12 +29,12 @@ export async function testPhase3Database() {
     
     // Test 3: Join group by invite code (simulate another user)
     console.log('\n3️⃣ Testing Join by Invite Code...')
-    const { data: joinedGroup, error: joinError } = await groupsService.joinByInviteCode(newGroup.invite_code)
+    const { data: joinedGroupId, error: joinError } = await groupsService.joinByInviteCode(newGroup.invite_code)
     
     if (joinError) {
       console.log('⚠️ Join test expected to fail for same user:', joinError.message)
     } else {
-      console.log('✅ Group join successful:', joinedGroup?.name)
+      console.log('✅ Group join successful, group ID:', joinedGroupId)
     }
     
     // Test 4: Create a test waffle
