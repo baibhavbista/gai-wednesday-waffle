@@ -550,7 +550,7 @@ app.post('/ai/convo-starter', authenticateToken, async (req, res) => {
     console.log('[ConvoStarter] ✓ GPT raw raw response:', response.choices[0].message.content);
     console.log('[ConvoStarter] ✓ GPT raw response:', ret);
 
-    const suggestions = (ret.suggestions && ret.suggestions.length > 0) ? ret.suggestions || [
+    const suggestions = (ret.suggestions && ret.suggestions.length > 0) ? ret.suggestions : [
       "Tell us something new you're excited about!",
       'Got any mid-week adventures to share?'
     ];
