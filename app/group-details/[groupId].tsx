@@ -28,7 +28,7 @@ import {
 export default function GroupDetailsScreen() {
   const { groupId } = useLocalSearchParams<{ groupId: string }>();
   const router = useRouter();
-  const { groups, currentUser, isLoading } = useWaffleStore();
+  const { groups, messages, currentUser, isLoading } = useWaffleStore();
   const [copiedCode, setCopiedCode] = useState(false);
 
   const group = groups.find(g => g.id === groupId);
@@ -81,9 +81,50 @@ export default function GroupDetailsScreen() {
     );
   }
 
+  // Calculate actual posting activity from messages
+  const getLastPostTime = (memberId: string) => {
+    const memberMessages = messages.filter(m => 
+      m.groupId === groupId && 
+      m.userId === memberId && 
+      m.content.type !== 'text' // Filter out text-only messages
+    );
+    if (memberMessages.length === 0) return null;
+    
+    // Sort by creation date and get the most recent
+    const sortedMessages = memberMessages.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    return sortedMessages[0].createdAt;
+  };
+
+  const hasPostedThisWeek = (memberId: string) => {
+    const lastPost = getLastPostTime(memberId);
+    if (!lastPost) return false;
+    
+    const now = new Date();
+    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    return lastPost > weekAgo;
+  };
+
+  const getTimeSinceLastPost = (memberId: string) => {
+    const lastPost = getLastPostTime(memberId);
+    if (!lastPost) return 'Never posted';
+    
+    const now = new Date();
+    const diffMs = now.getTime() - lastPost.getTime();
+    const diffMinutes = Math.floor(diffMs / (1000 * 60));
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffHours / 24);
+    
+    if (diffDays > 0) return `${diffDays}d ago`;
+    if (diffHours > 0) return `${diffHours}h ago`;
+    if (diffMinutes > 0) return `${diffMinutes}m ago`;
+    return 'Just now';
+  };
+
   const isCreator = group.members.find(m => m.id === currentUser?.id)?.id === currentUser?.id;
-  const activeMembers = group.members.filter(m => m.hasPostedThisWeek);
-  const pendingMembers = group.members.filter(m => !m.hasPostedThisWeek);
+  
+  // Use actual posting data instead of mock data
+  const activeMembers = group.members.filter(m => hasPostedThisWeek(m.id));
+  const pendingMembers = group.members.filter(m => !hasPostedThisWeek(m.id));
 
   const handleCopyInviteCode = async () => {
     try {
@@ -109,7 +150,7 @@ export default function GroupDetailsScreen() {
   const handleLeaveGroup = () => {
     Alert.alert(
       'Leave Group',
-      `Are you sure you want to leave "${group.name}"? You'll need a new invite code to rejoin.`,
+      `Are you sure you want to leave "${group.name}"? You&apos;ll need a new invite code to rejoin.`,
       [
         { text: 'Cancel', style: 'cancel' },
         { 
@@ -211,7 +252,7 @@ export default function GroupDetailsScreen() {
               </Text>
               {activeMembers.map((member) => (
                 <View key={member.id} style={styles.memberItem}>
-                  <Image source={{ uri: member.avatar || 'https://via.placeholder.com/44' }} style={styles.memberAvatar} />
+                  <Image source={{ uri: member.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(member.name)}` }} style={styles.memberAvatar} />
                   <View style={styles.memberInfo}>
                     <View style={styles.memberNameRow}>
                       <Text style={styles.memberName}>{member.name}</Text>
@@ -223,7 +264,7 @@ export default function GroupDetailsScreen() {
                       )}
                     </View>
                     <Text style={styles.memberStatus}>
-                      Active {Math.floor((Date.now() - member.lastActive.getTime()) / (1000 * 60 * 60))}h ago
+                      Last posted {getTimeSinceLastPost(member.id)}
                     </Text>
                   </View>
                   <View style={styles.activeIndicator} />
@@ -240,7 +281,7 @@ export default function GroupDetailsScreen() {
               </Text>
               {pendingMembers.map((member) => (
                 <View key={member.id} style={styles.memberItem}>
-                  <Image source={{ uri: member.avatar || 'https://via.placeholder.com/44' }} style={[styles.memberAvatar, styles.memberAvatarPending]} />
+                  <Image source={{ uri: member.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(member.name)}` }} style={[styles.memberAvatar, styles.memberAvatarPending]} />
                   <View style={styles.memberInfo}>
                     <View style={styles.memberNameRow}>
                       <Text style={[styles.memberName, styles.memberNamePending]}>{member.name}</Text>
@@ -249,7 +290,7 @@ export default function GroupDetailsScreen() {
                       )}
                     </View>
                     <Text style={styles.memberStatusPending}>
-                      Hasn't posted this week
+                      Last posted {getTimeSinceLastPost(member.id)}
                     </Text>
                   </View>
                   <View style={styles.pendingIndicator} />

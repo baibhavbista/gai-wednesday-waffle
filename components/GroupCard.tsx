@@ -63,7 +63,7 @@ export default function GroupCard({ group, onPress, isConnected }: GroupCardProp
             <Image 
               source={{ uri: member.avatar }} 
               style={styles.avatarImage}
-              defaultSource={{ uri: 'https://via.placeholder.com/32x32/666/fff?text=?' }}
+              defaultSource={{ uri: `https://ui-avatars.com/api/?name=${encodeURIComponent(member.name)}` }}
             />
             {member.hasPostedThisWeek && <View style={styles.activeIndicator} />}
           </View>

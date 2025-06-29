@@ -84,7 +84,7 @@ export default function ProfileScreen() {
         <View style={styles.profileHeader}>
           <View style={styles.avatarContainer}>
             <Image 
-              source={{ uri: currentUser?.avatar || 'https://via.placeholder.com/80' }} 
+              source={{ uri: currentUser?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser?.name || 'User')}` }} 
               style={styles.avatar} 
             />
             <TouchableOpacity style={styles.editAvatarButton}>

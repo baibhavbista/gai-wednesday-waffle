@@ -144,7 +144,7 @@ export default function WaffleMessage({
       {/* Avatar and Name */}
       {!isOwnMessage && (
         <View style={styles.messageHeader}>
-          <Image source={{ uri: message.userAvatar || 'https://via.placeholder.com/32' }} style={styles.avatar} />
+          <Image source={{ uri: message.userAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(message.userName)}` }} style={styles.avatar} />
           <View style={styles.messageInfo}>
             <Text style={styles.userName}>{message.userName}</Text>
             <Text style={styles.timestamp}>{getTimeAgo(message.createdAt)}</Text>
@@ -195,7 +195,7 @@ export default function WaffleMessage({
             ) : (
               // Image content
               <View style={styles.imageContainer}>
-                <Image source={{ uri: message.content.url || 'https://via.placeholder.com/300x160' }} style={styles.contentImage} />
+                <Image source={{ uri: message.content.url || 'https://www.gravatar.com/avatar/?d=mp' }} style={styles.contentImage} />
               </View>
             )}
 

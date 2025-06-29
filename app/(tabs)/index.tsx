@@ -341,7 +341,7 @@ export default function ChatsScreen() {
                   </View>
 
                   {/* Member Avatars */}
-                  <View style={styles.memberAvatars}>
+                  {/* <View style={styles.memberAvatars}>
                     {group.members.slice(0, 3).map((member, index) => (
                       <View
                         key={member.id}
@@ -351,7 +351,7 @@ export default function ChatsScreen() {
                           !member.hasPostedThisWeek && styles.memberAvatarPending
                         ]}
                       >
-                        <Image source={{ uri: member.avatar || 'https://via.placeholder.com/28' }} style={styles.memberAvatarImage} />
+                        <Image source={{ uri: member.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(member.name)}` }} style={styles.memberAvatarImage} />
                         {!member.hasPostedThisWeek && member.id !== currentUser?.id && (
                           <View style={styles.pendingIndicator} />
                         )}
@@ -362,7 +362,7 @@ export default function ChatsScreen() {
                         <Text style={styles.moreMembers}>+{group.members.length - 3}</Text>
                       </View>
                     )}
-                  </View>
+                  </View> */}
                 </TouchableOpacity>
               );
             })}

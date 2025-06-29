@@ -28,10 +28,10 @@ export default function ChatScreen() {
     groups, 
     messages, 
     currentUser,
+    currentGroupId,
     loadGroupMessages,
     isLoading,
     likeMessage,
-    addReaction,
     markMessageViewed,
     addMessage,
     clearGroupUnreadCount,
@@ -43,7 +43,14 @@ export default function ChatScreen() {
   const [viewableItems, setViewableItems] = useState<string[]>([]);
 
   // Real-time hook - no longer need manual subscription calls
-  const { } = useRealtime();
+  const { status } = useRealtime();
+  
+  // Debug real-time status and current group
+  useEffect(() => {
+    console.log('📡 Real-time status:', status);
+    console.log('🎯 Current group ID in store:', currentGroupId);
+    console.log('🎯 Group ID from params:', groupId);
+  }, [status, currentGroupId, groupId]);
 
   // Viewability configuration
   const viewabilityConfig = {
@@ -64,10 +71,9 @@ export default function ChatScreen() {
       message={message}
       currentUserId={currentUser?.id || ''}
       onLike={likeMessage}
-      onReaction={addReaction}
       isInViewport={viewableItems.includes(message.id)}
     />
-  ), [currentUser?.id, likeMessage, addReaction, viewableItems]);
+  ), [currentUser?.id, likeMessage, viewableItems]);
 
   const group = groups.find(g => g.id === groupId);
   const groupMessages = messages.filter(m => m.groupId === groupId).sort(
@@ -85,6 +91,7 @@ export default function ChatScreen() {
   // Load messages when group changes
   useEffect(() => {
     if (groupId) {
+      console.log('📱 Chat screen: Loading messages and setting up real-time for group:', groupId);
       loadGroupMessages(groupId);
       // Set current group for automatic real-time subscription
       setCurrentGroup(groupId);
@@ -95,10 +102,11 @@ export default function ChatScreen() {
     return () => {
       // Clear current group when leaving
       if (groupId) {
+        console.log('📱 Chat screen: Cleaning up real-time for group:', groupId);
         setCurrentGroup(null);
       }
     };
-  }, [groupId]); // Only depend on groupId, not the functions
+  }, [groupId, loadGroupMessages, setCurrentGroup, clearGroupUnreadCount]); // Include function dependencies
 
   useEffect(() => {
     if (isWednesday && !userHasPostedThisWeek && groupMessages.length > 0) {
@@ -193,7 +201,7 @@ export default function ChatScreen() {
             <Text style={styles.groupName}>{group.name}</Text>
             <Text style={styles.memberCount}>
               {group.members.length} members
-              {missingMembers.length > 0 && ` • ${missingMembers.length} pending`}
+              {missingMembers.length > 0 && ` • ${group.members.length - missingMembers.length} active this week`}
             </Text>
           </TouchableOpacity>
 
@@ -207,7 +215,7 @@ export default function ChatScreen() {
                   !member.hasPostedThisWeek && styles.memberAvatarPending
                 ]}
               >
-                <Image source={{ uri: member.avatar || 'https://via.placeholder.com/24' }} style={styles.headerMemberAvatarImage} />
+                <Image source={{ uri: member.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(member.name)}` }} style={styles.headerMemberAvatarImage} />
                 {!member.hasPostedThisWeek && member.id !== currentUser?.id && (
                   <View style={styles.pendingIndicator} />
                 )}
