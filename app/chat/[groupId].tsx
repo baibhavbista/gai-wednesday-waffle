@@ -1,8 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
-  ScrollView,
+  FlatList,
   StyleSheet,
   SafeAreaView,
   TouchableOpacity,
@@ -10,6 +10,7 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  ListRenderItem,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useWaffleStore } from '@/store/useWaffleStore';
@@ -21,7 +22,7 @@ import { useRealtime } from '@/hooks/useRealtime';
 export default function ChatScreen() {
   const { groupId } = useLocalSearchParams<{ groupId: string }>();
   const router = useRouter();
-  const scrollViewRef = useRef<ScrollView>(null);
+  const flatListRef = useRef<FlatList>(null);
   
   const { 
     groups, 
@@ -39,13 +40,45 @@ export default function ChatScreen() {
 
   const [showNudge, setShowNudge] = useState(false);
   const [messageText, setMessageText] = useState('');
+  const [viewableItems, setViewableItems] = useState<string[]>([]);
 
   // Real-time hook - no longer need manual subscription calls
   const { } = useRealtime();
 
+  // Viewability configuration
+  const viewabilityConfig = {
+    itemVisiblePercentThreshold: 50, // Item is considered visible when 50% is visible
+  };
+
+  // Handle viewable items changed
+  const onViewableItemsChanged = useCallback(({ viewableItems: newViewableItems }: { viewableItems: any[] }) => {
+    const visibleIds = newViewableItems.map((item: any) => item.item.id);
+    setViewableItems(visibleIds);
+  }, []);
+
+  // Define handleViewRecap early so it can be used in renderMessage
+  const handleViewRecap = useCallback((messageId: string) => {
+    markMessageViewed(messageId);
+    // Mock AI recap
+    alert('AI Catch-up Recap: This waffle shows a cozy coffee moment at the recommended shop. The atmosphere looks perfect for some quality coffee time, and it seems like the group\'s suggestion was a hit!');
+  }, [markMessageViewed]);
+
+  // FlatList render function
+  const renderMessage: ListRenderItem<any> = useCallback(({ item: message }) => (
+    <WaffleMessage
+      key={message.id}
+      message={message}
+      currentUserId={currentUser?.id || ''}
+      onLike={likeMessage}
+      onReaction={addReaction}
+      onViewRecap={handleViewRecap}
+      isInViewport={viewableItems.includes(message.id)}
+    />
+  ), [currentUser?.id, likeMessage, addReaction, viewableItems, handleViewRecap]);
+
   const group = groups.find(g => g.id === groupId);
   const groupMessages = messages.filter(m => m.groupId === groupId).sort(
-    (a, b) => a.createdAt.getTime() - b.createdAt.getTime()
+    (a, b) => b.createdAt.getTime() - a.createdAt.getTime() // Reverse order for inverted FlatList
   );
 
   // Mock: Show nudge on Wednesdays if user hasn't posted
@@ -81,11 +114,26 @@ export default function ChatScreen() {
     }
   }, [isWednesday, userHasPostedThisWeek, groupMessages.length]);
 
+  // Scroll to bottom when messages first load
   useEffect(() => {
-    // Scroll to bottom when new messages arrive
-    setTimeout(() => {
-      scrollViewRef.current?.scrollToEnd({ animated: true });
-    }, 100);
+    if (groupMessages.length > 0 && flatListRef.current) {
+      setTimeout(() => {
+        // For inverted FlatList, scrollToIndex(0) goes to the most recent message
+        flatListRef.current?.scrollToIndex({ index: 0, animated: false });
+      }, 200);
+    }
+  }, [groupMessages.length > 0]); // Only trigger when we go from 0 to having messages
+
+  useEffect(() => {
+    // Scroll to bottom when new messages arrive (but not on initial load)
+    if (groupMessages.length > 1) {
+      setTimeout(() => {
+        if (flatListRef.current) {
+          // For inverted FlatList, scrollToIndex(0) goes to the most recent message
+          flatListRef.current.scrollToIndex({ index: 0, animated: true });
+        }
+      }, 100);
+    }
   }, [groupMessages.length]);
 
   if (!group) {
@@ -106,11 +154,7 @@ export default function ChatScreen() {
     router.push(`/(tabs)/camera?groupId=${groupId}`);
   };
 
-  const handleViewRecap = (messageId: string) => {
-    markMessageViewed(messageId);
-    // Mock AI recap
-    alert('AI Catch-up Recap: This waffle shows a cozy coffee moment at the recommended shop. The atmosphere looks perfect for some quality coffee time, and it seems like the group\'s suggestion was a hit!');
-  };
+
 
   const handleSendMessage = async () => {
     if (!messageText.trim() || !currentUser || !groupId) return;
@@ -180,46 +224,50 @@ export default function ChatScreen() {
         </View>
 
         {/* Messages */}
-        <ScrollView 
-          ref={scrollViewRef}
-          style={styles.messagesContainer}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.messagesContent}
-        >
-          {isLoading && groupMessages.length === 0 ? (
-            <View style={styles.loadingChat}>
-              <Text style={styles.loadingText}>Loading waffles...</Text>
+        {isLoading && groupMessages.length === 0 ? (
+          <View style={styles.loadingChat}>
+            <Text style={styles.loadingText}>Loading waffles...</Text>
+          </View>
+        ) : groupMessages.length === 0 ? (
+          <View style={styles.emptyChat}>
+            <View style={styles.emptyIconContainer}>
+              <Camera size={48} color="#D1D5DB" />
             </View>
-          ) : groupMessages.length === 0 ? (
-            <View style={styles.emptyChat}>
-              <View style={styles.emptyIconContainer}>
-                <Camera size={48} color="#D1D5DB" />
-              </View>
-              <Text style={styles.emptyTitle}>No waffles yet this week</Text>
-              <Text style={styles.emptySubtitle}>
-                Be the first to share a life update with {group.name}!
-              </Text>
-              <TouchableOpacity 
-                style={styles.firstWaffleButton}
-                onPress={handleCameraPress}
-              >
-                <Camera size={16} color="#FFFFFF" />
-                <Text style={styles.firstWaffleText}>Share Your First Waffle</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            groupMessages.map((message) => (
-              <WaffleMessage
-                key={message.id}
-                message={message}
-                currentUserId={currentUser?.id || ''}
-                onLike={likeMessage}
-                onReaction={addReaction}
-                onViewRecap={handleViewRecap}
-              />
-            ))
-          )}
-        </ScrollView>
+            <Text style={styles.emptyTitle}>No waffles yet this week</Text>
+            <Text style={styles.emptySubtitle}>
+              Be the first to share a life update with {group.name}!
+            </Text>
+            <TouchableOpacity 
+              style={styles.firstWaffleButton}
+              onPress={handleCameraPress}
+            >
+              <Camera size={16} color="#FFFFFF" />
+              <Text style={styles.firstWaffleText}>Share Your First Waffle</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <FlatList
+            ref={flatListRef}
+            data={groupMessages}
+            keyExtractor={(item) => item.id}
+            renderItem={renderMessage}
+            style={styles.messagesContainer}
+            contentContainerStyle={styles.messagesContent}
+            showsVerticalScrollIndicator={false}
+            onViewableItemsChanged={onViewableItemsChanged}
+            viewabilityConfig={viewabilityConfig}
+            inverted={true}
+            initialScrollIndex={0}
+            getItemLayout={(data, index) => ({
+              length: 200, // Approximate item height
+              offset: 200 * index,
+              index,
+            })}
+            maintainVisibleContentPosition={{
+              minIndexForVisible: 0,
+            }}
+          />
+        )}
 
         {/* Input Bar */}
         <View style={styles.inputContainer}>

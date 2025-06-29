@@ -552,7 +552,7 @@ export default function CameraScreen() {
           type: 'video' as const,
           url: uploadResult.url, // ✅ Use uploaded URL instead of local file path
         },
-        caption: caption || 'Check out my waffle! 🧇',
+        caption: caption || '',
         groupId: selectedGroupId,
       };
 

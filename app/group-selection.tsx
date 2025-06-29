@@ -80,7 +80,7 @@ export default function GroupSelectionScreen() {
             type: 'video' as const,
             url: uploadResult.url,
           },
-          caption: caption || 'Check out my waffle! 🧇',
+          caption: caption || '',
           groupId,
         };
 
