@@ -36,7 +36,7 @@
 
 ## 🛠 Tech Stack
 
-- **Frontend**: React Native + Expo Router, NativeWind, Zustand
+- **Frontend**: React Native + Expo Router, StyleSheet API, Zustand
 - **Backend**: Supabase (Auth, Postgres, Storage, Realtime, Vector/pgvector)
 - **AI**: Edge Functions → Whisper STT → Supabase Vector → GPT-4o
 - **Performance**: All AI calls return in <3s (SnapConnect success metric)
@@ -50,12 +50,16 @@
 - [x] Zustand state management with proper TypeScript interfaces
 - [x] Polished UI with Inter/Poppins fonts and consistent design
 - [x] Message components with reactions, likes, and retention types
-- [x] Mock data structure for groups, users, and messages
+- [x] **Supabase backend integration** (Auth, Database, Storage)
+- [x] **Real-time messaging and group updates**
+- [x] **Video/photo upload to Supabase Storage**
+- [x] **Complete database schema with RLS policies**
+- [x] **Google OAuth authentication**
+- [x] **User profile management**
+- [x] **Multi-group video sharing**
+- [x] **Retention types** (view-once, 7-day, keep-forever)
 
 ### 🔄 **In Progress**
-- [ ] Supabase backend integration
-- [ ] Real-time messaging and notifications
-- [ ] Video/photo upload to Supabase Storage
 - [ ] AI features implementation (Prompt-Me-Please, Caption Genie, Catch-Up Recap)
 - [ ] Push notification system
 - [ ] RAG infrastructure with vector embeddings
@@ -72,21 +76,41 @@
 
 ```
 wednesday-waffle/
-├── app/                     # Expo Router pages
-│   ├── (tabs)/             # Tab navigation screens
-│   │   ├── index.tsx       # Chat/Groups list
-│   │   ├── camera.tsx      # Video/photo capture
-│   │   ├── groups.tsx      # Group management
-│   │   └── profile.tsx     # User settings
-│   ├── chat/[groupId].tsx  # Individual group chat
-│   └── _layout.tsx         # Root navigation
-├── components/             # Reusable UI components
-│   ├── WaffleCard.tsx      # Group preview cards
-│   ├── WaffleMessage.tsx   # Message display component
-│   └── WednesdayNudge.tsx  # Notification modal
-├── store/                  # Zustand state management
-│   └── useWaffleStore.ts   # Main app state
-└── hooks/                  # Custom React hooks
+├── app/                          # Expo Router pages
+│   ├── (tabs)/                  # Tab navigation screens
+│   │   ├── index.tsx            # Chat/Groups list
+│   │   ├── camera.tsx           # Video/photo capture
+│   │   └── profile.tsx          # User settings
+│   ├── auth/callback.tsx        # OAuth callback handler
+│   ├── chat/[groupId].tsx       # Individual group chat
+│   ├── group-details/[groupId].tsx # Group settings
+│   ├── group-selection.tsx      # Multi-group sharing
+│   └── _layout.tsx              # Root navigation
+├── components/                  # Reusable UI components
+│   ├── Auth.tsx                 # Authentication UI
+│   ├── GroupCard.tsx            # Group preview cards
+│   ├── ProfileSetup.tsx         # User onboarding
+│   ├── WaffleCard.tsx           # Message cards
+│   ├── WaffleMessage.tsx        # Message display component
+│   └── WednesdayNudge.tsx       # Notification modal
+├── hooks/                       # Custom React hooks
+│   ├── useAuth.ts               # Authentication logic
+│   ├── useMedia.ts              # Camera & upload utilities
+│   └── useRealtime.ts           # Real-time subscriptions
+├── lib/                         # Backend services
+│   ├── supabase.ts              # Supabase client setup
+│   ├── database-service.ts      # CRUD operations
+│   ├── storage-service.ts       # File upload/download
+│   ├── profile-service.ts       # User management
+│   └── settings-service.ts      # App preferences
+├── store/                       # Zustand state management
+│   └── useWaffleStore.ts        # Main app state
+└── scripts/supabase/            # Database migrations
+    ├── 01-profiles-table.sql    # User profiles
+    ├── 02-groups-table.sql      # Groups & invite codes
+    ├── 03-group-members-table.sql # Memberships
+    ├── 04-waffles-table.sql     # Messages/waffles
+    └── ...                      # 11+ migration files
 ```
 
 ## 🏗 Installation & Setup
@@ -113,12 +137,12 @@ npm run dev
 # Follow Expo CLI prompts or scan QR code with Expo Go app
 ```
 
-### Environment Setup (Coming Soon)
+### Environment Setup (Required)
 ```bash
 # Create .env.local file
 EXPO_PUBLIC_SUPABASE_URL=your-supabase-url
 EXPO_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
-EXPO_PUBLIC_OPENAI_API_KEY=your-openai-key
+EXPO_PUBLIC_OPENAI_API_KEY=your-openai-key  # For future AI features
 ```
 
 ## 🎨 Design Philosophy
@@ -128,7 +152,7 @@ EXPO_PUBLIC_OPENAI_API_KEY=your-openai-key
 - **Private over public**: Your closest friends, not the whole internet
 - **Ephemeral by default**: Memories that naturally fade (unless you choose otherwise)
 
-## 🗂 Database Schema (Planned)
+## 🗂 Database Schema (Implemented)
 
 ```sql
 -- Users table
@@ -167,23 +191,25 @@ graph TD
 
 - **Built from scratch using Bolt.new** - rapid prototyping to current state
 - **Performance target**: All AI endpoints must respond in <3 seconds
-- **Demo-ready**: 5-minute walkthrough showcasing core features
+- **Production backend**: Supabase with complete database schema and RLS policies
+- **Real-time ready**: Live messaging and group updates via Supabase Realtime
+- **Demo-ready**: Core features fully functional for walkthrough
 - **Mobile-first**: Optimized for iOS/Android with web support
 
 ## 🎯 Success Metrics
 
-- **Feature completeness**: 5-6 user stories pass manual QA
-- **Performance**: AI endpoints P95 latency <3s
-- **Demo**: No crashes during 5-minute walkthrough
-- **Bonus**: Deliver stretch story (multi-group sharing)
+- **Feature completeness**: ✅ Core messaging & groups implemented (~70% complete)
+- **Performance**: AI endpoints P95 latency <3s (pending implementation)
+- **Demo**: ✅ Core features stable for walkthrough
+- **Bonus**: ✅ Multi-group sharing delivered
 
 ## 🚧 Next Steps
 
-1. **Supabase Integration**: Set up auth, database, and storage
-2. **AI Implementation**: Build Edge Functions for STT and RAG
-3. **Real-time Features**: Implement live messaging and notifications  
-4. **Testing & Polish**: Ensure <3s AI response times
-5. **Demo Preparation**: Record walkthrough video
+1. **AI Implementation**: Build Edge Functions for STT and RAG
+2. **Push Notifications**: Implement Wednesday nudger system
+3. **Testing & Polish**: Ensure <3s AI response times
+4. **Demo Preparation**: Record walkthrough video
+5. **Performance Optimization**: Fine-tune real-time features
 
 ## 🤝 Contributing
 
