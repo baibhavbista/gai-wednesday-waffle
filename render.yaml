@@ -11,8 +11,9 @@ services:
     rootDir: render-backend
 
     # This section installs FFmpeg into the native Node.js environment
-    packages:
-      - name: ffmpeg
+    #   probably not required sinc it should be installed by default when using native runtime
+    # packages:
+    #   - name: ffmpeg
 
     # Specifies build and start commands relative to the Root Directory
     buildCommand: "npm install"
