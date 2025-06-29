@@ -294,8 +294,20 @@ app.post('/process-full-video', async (req, res) => {
     });
     console.log(`Full transcript for ${fileName} received.`);
 
-    // 4. Update the database with the transcript
-    console.log('Connecting to database to update transcript...');
+    // 4. Generate embedding for the transcript text
+    console.log('Generating embedding for transcript...');
+    const embeddingResponse = await openai.embeddings.create({
+      model: 'text-embedding-3-small',
+      input: transcript.text,
+    });
+    const embeddingArray = embeddingResponse.data[0].embedding;
+    // Convert JS array to pgvector literal string e.g. '[0.1, 0.2, ...]'
+    const embeddingVectorLiteral = '[' + embeddingArray.join(',') + ']';
+
+    // 5. Upsert into transcripts table
+    console.log('Upserting transcript & embedding into public.transcripts...');
+
+    console.log('Connecting to database to save transcript...');
     console.log('Database connection details:', {
       host: pool.options.host,
       port: pool.options.port,
@@ -311,26 +323,25 @@ app.post('/process-full-video', async (req, res) => {
       dbClient = await pool.connect();
       console.log('Successfully connected to database');
 
-      const query = `
-      UPDATE public.waffles 
-      SET ai_transcript = $1 
-      WHERE content_url LIKE '%' || $2 || '%' 
-      AND content_type = 'video' 
-      RETURNING id;
+      // Resolve the canonical content_url used in waffles table (full URL)
+      const { rows: urlRows } = await dbClient.query(
+        `SELECT content_url FROM public.waffles WHERE content_url LIKE '%' || $1 || '%' LIMIT 1`,
+        [fileName]
+      );
+      const canonicalContentUrl = urlRows?.[0]?.content_url || fileName; // fall back to file name path
+
+      const upsertQuery = `
+      INSERT INTO public.transcripts (content_url, text, embedding)
+      VALUES ($1, $2, $3::vector)
+      ON CONFLICT (content_url) DO UPDATE
+        SET text = EXCLUDED.text,
+            embedding = EXCLUDED.embedding,
+            created_at = NOW();
       `;
-      console.log('Executing query:', {
-        query,
-        fileName,
-        transcriptLength: transcript.text.length
-      });
-      
-      const result = await dbClient.query(query, [transcript.text, fileName]);
-      
-      if (result.rowCount === 0) {
-        console.warn(`No waffle found with fileName ${fileName}`);
-      } else {
-        console.log(`Successfully updated transcript for waffles with file path ${fileName}`);
-      }
+
+      await dbClient.query(upsertQuery, [canonicalContentUrl, transcript.text, embeddingVectorLiteral]);
+
+      console.log(`Successfully upserted transcript for content_url: ${canonicalContentUrl}`);
     } catch (dbError) {
       console.error('Database error details:', {
         code: dbError.code,
@@ -339,7 +350,7 @@ app.post('/process-full-video', async (req, res) => {
         address: dbError.address,
         port: dbError.port,
         message: dbError.message,
-        stack: dbError.stack
+        stack: dbError.stack,
       });
       throw dbError;
     } finally {
@@ -349,8 +360,9 @@ app.post('/process-full-video', async (req, res) => {
       }
     }
 
+    // 6. Finish response
     console.log(`✅ Successfully finished processing for file: ${fileName}`);
-    res.status(200).json({ message: 'Transcript processed and saved.' });
+    res.status(200).json({ message: 'Transcript processed, embedded, and saved.' });
 
   } catch (error) {
     console.error(`❌ Error processing full video for ${fileName}:`, error);
