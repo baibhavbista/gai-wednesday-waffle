@@ -81,11 +81,17 @@ if (!dbHost) {
   console.error('❌ Could not extract database host from connection string');
 }
 
+// Create pool with explicit parameters
 const pool = new Pool({
-  connectionString: process.env.SUPABASE_DB_URL,
-  // Force IPv4 using host from connection string
+  // Don't use connectionString to avoid IPv6
   host: dbHost,
+  port: dbUrlValidation.isValid ? parseInt(dbUrlValidation.components.port) : 5432,
+  database: dbUrlValidation.isValid ? dbUrlValidation.components.database : 'postgres',
+  user: dbUrlValidation.isValid ? dbUrlValidation.components.user : 'postgres',
+  password: process.env.SUPABASE_DB_PASSWORD,
   ssl: { rejectUnauthorized: false },
+  // Force IPv4
+  family: 4,
   // Add timeouts
   connectionTimeoutMillis: 5000,
   idleTimeoutMillis: 30000,
@@ -336,14 +342,22 @@ app.post('/process-full-video', async (req, res) => {
       database: pool.options.database,
       user: pool.options.user,
       ssl: !!pool.options.ssl,
+      family: pool.options.family,
     });
 
     let dbClient;
     try {
+      console.log('Attempting database connection...');
       dbClient = await pool.connect();
       console.log('Successfully connected to database');
 
       const query = 'UPDATE public.waffles SET ai_transcript = $1 WHERE id = $2 RETURNING id';
+      console.log('Executing query:', {
+        query,
+        waffleId,
+        transcriptLength: transcript.text.length
+      });
+      
       const result = await dbClient.query(query, [transcript.text, waffleId]);
       
       if (result.rowCount === 0) {
@@ -359,6 +373,7 @@ app.post('/process-full-video', async (req, res) => {
         address: dbError.address,
         port: dbError.port,
         message: dbError.message,
+        stack: dbError.stack
       });
       throw dbError;
     } finally {
