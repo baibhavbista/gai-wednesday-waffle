@@ -422,7 +422,10 @@ const THROTTLE_WINDOW_MS = 30_000; // 30 seconds per user+group
 app.post('/ai/convo-starter', authenticateToken, async (req, res) => {
   const { group_id: groupId, user_uid: userUid, limit_user = 3, limit_group = 5 } = req.body || {};
 
+  console.log('\n[ConvoStarter] ⇢ Incoming request', { userUid, groupId, body: req.body });
+
   if (!groupId || !userUid) {
+    console.warn('[ConvoStarter] ✖ Missing group_id or user_uid');
     return res.status(400).json({ error: 'Missing group_id or user_uid' });
   }
 
@@ -430,24 +433,31 @@ app.post('/ai/convo-starter', authenticateToken, async (req, res) => {
   const throttleKey = `${userUid}-${groupId}`;
   const now = Date.now();
   if (convoStarterThrottle.has(throttleKey) && now - convoStarterThrottle.get(throttleKey) < THROTTLE_WINDOW_MS) {
+    console.warn('[ConvoStarter] ✖ Rate limited for key', throttleKey);
     return res.status(429).json({ error: 'Too many requests – please wait a moment.' });
   }
   convoStarterThrottle.set(throttleKey, now);
+  console.log('[ConvoStarter] ✓ Passed throttle check');
 
   let dbClient;
   try {
     dbClient = await pool.connect();
+    console.log('[ConvoStarter] ✓ DB connection acquired');
 
-    // 1) Verify the caller is indeed a member of the group (defence-in-depth)
+    // 1) Verify the caller is indeed a member of the group
+    console.log('[ConvoStarter] → Verifying membership');
     const { rows: membershipRows } = await dbClient.query(
       `SELECT 1 FROM public.group_members WHERE group_id = $1 AND user_id = $2 LIMIT 1`,
       [groupId, userUid]
     );
     if (membershipRows.length === 0) {
+      console.warn('[ConvoStarter] ✖ User is NOT a member of group');
       return res.status(403).json({ error: 'User not a member of the group' });
     }
+    console.log('[ConvoStarter] ✓ Membership verified');
 
-    // 2) Fetch recent transcripts: 3 from user, 5 from others in group
+    // 2) Fetch recent transcripts
+    console.log('[ConvoStarter] → Fetching recent snippets');
     const fetchQuery = `
       WITH user_snippets AS (
         SELECT t.text
@@ -467,29 +477,28 @@ app.post('/ai/convo-starter', authenticateToken, async (req, res) => {
       )
       SELECT text FROM user_snippets
       UNION ALL
-      SELECT text FROM others_snippets;
-    `;
+      SELECT text FROM others_snippets;`;
 
     const { rows } = await dbClient.query(fetchQuery, [groupId, userUid, limit_user, limit_group]);
 
+    const userSnippetCount = Math.min(limit_user, rows.length);
+    const totalSnippets = rows.length;
+    console.log(`[ConvoStarter] ✓ Retrieved ${totalSnippets} snippets (${userSnippetCount} from user, ${totalSnippets - userSnippetCount} from others)`);
+    rows.slice(0, 3).forEach((r, idx) => console.log(`[ConvoStarter]   • Snippet ${idx + 1}:`, r.text?.slice(0, 50)));
+
     if (rows.length === 0) {
+      console.log('[ConvoStarter] ⚠ No snippets found, returning defaults');
       return res.status(200).json({ prompts: [
         "What's something exciting coming up for you this week?",
         'Share a quick highlight from today!'
       ]});
     }
 
-    // Concatenate snippets with truncation to keep prompt concise
     const snippets = rows.map(r => (r.text || '').slice(0, 120));
 
-    const prompt = `You are Prompt-Me-Please, an assistant that writes playful conversation starters for a small friend group.
-A user is about to record a new waffle but seems unsure what to say. Using the recent snippets below, craft exactly 2 fun, engaging prompts that would inspire the user to share an update.
-Be sure to: 
-• Reference any ongoing activities or plans they mentioned earlier.
-• Keep each prompt ≤100 characters.
-• Return ONLY a JSON array of two strings.
+    const prompt = `You are Prompt-Me-Please, an assistant that writes playful conversation starters for a small friend group.\nA user is about to record a new waffle but seems unsure what to say. Using the recent snippets below, craft exactly 2 fun, engaging prompts that would inspire the user to share an update.\nBe sure to: \n• Reference any ongoing activities or plans they mentioned earlier.\n• Keep each prompt ≤100 characters.\n• Return ONLY a JSON array of two strings.\n\nRecent snippets:\n${snippets.map(s => '"' + s.replace(/"/g, '') + '"').join('\n')}`;
 
-Recent snippets:\n${snippets.map(s => '"' + s.replace(/"/g, '') + '"').join('\n')}`;
+    console.log('[ConvoStarter] → Sending prompt to GPT (first 300 chars):', prompt.slice(0, 300));
 
     const gptResp = await openai.chat.completions.create({
       model: 'gpt-4o',
@@ -499,19 +508,23 @@ Recent snippets:\n${snippets.map(s => '"' + s.replace(/"/g, '') + '"').join('\n'
       response_format: { type: 'json_object' },
     });
 
+    console.log('[ConvoStarter] ✓ GPT raw response:', gptResp.choices[0]?.message?.content?.slice(0, 200));
+
     let prompts;
     try {
       prompts = JSON.parse(gptResp.choices[0].message.content);
     } catch (_) {
+      console.warn('[ConvoStarter] ⚠ Failed to parse GPT JSON, using fallback');
       prompts = [
         "Tell us something new you're excited about!",
         'Got any mid-week adventures to share?'
       ];
     }
 
+    console.log('[ConvoStarter] ✓ Returning prompts', prompts);
     res.json({ prompts });
   } catch (err) {
-    console.error('Error in convo-starter pipeline:', err);
+    console.error('[ConvoStarter] ✖ Pipeline error:', err);
     res.status(500).json({ error: 'Failed to generate prompts.' });
   } finally {
     if (dbClient) dbClient.release();
