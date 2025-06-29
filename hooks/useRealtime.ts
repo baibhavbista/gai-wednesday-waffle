@@ -413,6 +413,12 @@ export function useRealtime() {
   const subscribeToAllGroupsSummary = (groupIds: string[]) => {
     if (__DEV__) console.log('📋 Subscribing to all groups summary:', groupIds.length, 'groups')
     
+    // Prevent duplicate subscription calls
+    if (groupIds.length === 0) {
+      if (__DEV__) console.log('📋 No groups to subscribe to, skipping')
+      return
+    }
+    
     // Unsubscribe from any existing summary subscriptions
     const existingSummaryChannels = Array.from(channelsRef.current.keys()).filter(key => key.startsWith('summary-'))
     existingSummaryChannels.forEach(key => {
@@ -590,9 +596,10 @@ export function useRealtime() {
             setStatus(prev => ({ ...prev, error: null, connecting: true }))
             
             // Reconnect to current group if needed
-            if (currentGroupId) {
-              unsubscribeFromGroup(currentGroupId)
-              setTimeout(() => subscribeToGroup(currentGroupId), 1000)
+            const currentState = useWaffleStore.getState()
+            if (currentState.currentGroupId) {
+              unsubscribeFromGroup(currentState.currentGroupId)
+              setTimeout(() => subscribeToGroup(currentState.currentGroupId!), 1000)
             }
           } else {
             if (__DEV__) console.log('📡 Gone offline')
@@ -613,7 +620,7 @@ export function useRealtime() {
         netInfoUnsubscribe()
       }
     }
-  }, [currentGroupId])
+  }, []) // Removed currentGroupId dependency to prevent re-setup
 
   // Optimistic waffle posting
   const postWaffleOptimistic = (waffle: Omit<WaffleRow, 'id' | 'created_at'>) => {

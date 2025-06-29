@@ -91,7 +91,7 @@ export function useAuth() {
     })
 
     return () => subscription.unsubscribe()
-  }, [setCurrentUser])
+  }, [])
 
   const signIn = async (email: string, password: string) => {
     setAuthState(prev => ({ ...prev, loading: true }))

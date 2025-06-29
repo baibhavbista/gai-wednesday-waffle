@@ -21,7 +21,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { Plus, MessageCircle, Clock, Users, UserPlus } from 'lucide-react-native';
 
 export default function ChatsScreen() {
-  const { groups, currentUser, isLoading, error, loadUserGroups, joinGroup, createGroup, clearData } = useWaffleStore();
+  const { groups, currentUser, isLoading, hasGroupsInitLoaded, error, loadUserGroups, joinGroup, createGroup, clearData } = useWaffleStore();
   const { status, setCallbacks, subscribeToAllGroupsSummary } = useRealtime();
   const { isReady, isAuthenticated } = useAuth();
   const router = useRouter();
@@ -50,13 +50,13 @@ export default function ChatsScreen() {
 
   // Load groups when authentication is ready
   useEffect(() => {
-    if (isReady && isAuthenticated) {
+    if (isReady && isAuthenticated && currentUser) {
       loadUserGroups();
     } else if (isReady && !isAuthenticated) {
       // Clear data if not authenticated
       clearData();
     }
-  }, [isReady, isAuthenticated, loadUserGroups, clearData]);
+  }, [isReady, isAuthenticated, currentUser]);
 
   // Subscribe to all groups for real-time last message updates
   useEffect(() => {
@@ -65,7 +65,7 @@ export default function ChatsScreen() {
       subscribeToAllGroupsSummary(groupIds);
       if (__DEV__) console.log('📋 Chats screen subscribed to', groupIds.length, 'groups for real-time updates');
     }
-  }, [isAuthenticated, groups, subscribeToAllGroupsSummary]);
+  }, [isAuthenticated, groups]);
 
   const handleJoinGroup = async () => {
     if (!inviteCode.trim()) {
@@ -183,32 +183,8 @@ export default function ChatsScreen() {
     return group.members.filter((m: any) => !m.hasPostedThisWeek && m.id !== currentUser?.id);
   };
 
-  // Show loading state if authentication isn't ready
-  if (!isReady) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#F97316" />
-          <Text style={styles.loadingText}>Loading...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  // Show auth required state if not authenticated
-  if (!isAuthenticated) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.emptyState}>
-          <MessageCircle size={48} color="#D1D5DB" />
-          <Text style={styles.emptyTitle}>Please sign in</Text>
-          <Text style={styles.emptySubtitle}>
-            Sign in to view your waffle groups
-          </Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
+  // Note: Authentication and profile loading is handled by _layout.tsx
+  // If we reach this component, we're guaranteed to have an authenticated user with profile
 
   // Show network error state if there's a connectivity issue
   if (error === 'NETWORK_ERROR') {
@@ -241,10 +217,10 @@ export default function ChatsScreen() {
                 loadUserGroups();
               }
             }}
-            disabled={isLoading}
+            disabled={!hasGroupsInitLoaded && isLoading}
           >
             <Text style={styles.retryButtonText}>
-              {isLoading ? 'Retrying...' : 'Try Again'}
+              {!hasGroupsInitLoaded && isLoading ? 'Retrying...' : 'Try Again'}
             </Text>
           </TouchableOpacity>
           <Text style={styles.networkErrorHelp}>
@@ -274,117 +250,125 @@ export default function ChatsScreen() {
       </View>
 
       {/* Chat List */}
-      <ScrollView style={styles.chatList} showsVerticalScrollIndicator={false}>
-        {groups
-          .sort((a, b) => {
-            // Get the most recent activity time for each group
-            const getRecentActivityTime = (group: typeof a) => {
-              if (!group.lastMessage) {
-                // No messages, use group creation time
-                return group.createdAt.getTime();
-              }
-              // Use whichever is more recent: last message or group creation
-              return Math.max(
-                group.lastMessage.createdAt.getTime(),
-                group.createdAt.getTime()
-              );
-            };
-            
-            const aTime = getRecentActivityTime(a);
-            const bTime = getRecentActivityTime(b);
-            
-            // Sort by most recent activity first
-            return bTime - aTime;
-          })
-          .map((group) => {
-          const missingMembers = getMissingMembers(group);
-          const isWednesday = new Date().getDay() === 3;
-          
-          return (
-            <TouchableOpacity
-              key={group.id}
-              style={styles.chatItem}
-              onPress={() => router.push(`/chat/${group.id}`)}
-            >
-              {/* Group Avatar */}
-              <View style={styles.groupAvatarContainer}>
-                <View style={styles.groupAvatar}>
-                  <Text style={styles.groupAvatarText}>
-                    {group.name.split(' ').map(word => word[0]).join('').slice(0, 2)}
-                  </Text>
-                </View>
-                {group.unreadCount > 0 && (
-                  <View style={styles.unreadBadge}>
-                    <Text style={styles.unreadText}>{group.unreadCount}</Text>
-                  </View>
-                )}
-              </View>
-
-              {/* Chat Info */}
-              <View style={styles.chatInfo}>
-                <View style={styles.chatHeader}>
-                  <Text style={styles.groupName}>{group.name}</Text>
-                  {group.lastMessage && (
-                    <Text style={styles.timestamp}>
-                      {getTimeAgo(group.lastMessage.createdAt)}
-                    </Text>
-                  )}
-                </View>
-
-                {group.lastMessage ? (
-                  <View style={styles.lastMessageContainer}>
-                    <Text style={styles.lastMessageSender}>
-                      {group.lastMessage.userName}:
-                    </Text>
-                    <Text style={styles.lastMessage} numberOfLines={1}>
-                      {group.lastMessage.caption}
-                    </Text>
-                  </View>
-                ) : (
-                  <Text style={styles.noMessages}>No waffles yet this week</Text>
-                )}
-
-                {/* Wednesday Nudge Indicator */}
-                {isWednesday && missingMembers.length > 0 && (
-                  <View style={styles.nudgeIndicator}>
-                    <Clock size={12} color="#F97316" />
-                    <Text style={styles.nudgeText}>
-                      Waiting for {missingMembers.length} member{missingMembers.length > 1 ? 's' : ''}
-                    </Text>
-                  </View>
-                )}
-              </View>
-
-              {/* Member Avatars */}
-              <View style={styles.memberAvatars}>
-                {group.members.slice(0, 3).map((member, index) => (
-                  <View
-                    key={member.id}
-                    style={[
-                      styles.memberAvatar,
-                      { marginLeft: index > 0 ? -8 : 0 },
-                      !member.hasPostedThisWeek && styles.memberAvatarPending
-                    ]}
-                  >
-                    <Image source={{ uri: member.avatar || 'https://via.placeholder.com/28' }} style={styles.memberAvatarImage} />
-                    {!member.hasPostedThisWeek && member.id !== currentUser?.id && (
-                      <View style={styles.pendingIndicator} />
+              {!hasGroupsInitLoaded && groups.length === 0 ? (
+        // Show centered loading while fetching groups for the first time
+        <View style={styles.centerLoadingContainer}>
+          <ActivityIndicator size="large" color="#F97316" />
+          <Text style={styles.loadingText}>Loading your groups...</Text>
+        </View>
+      ) : (
+        <ScrollView style={styles.chatList} showsVerticalScrollIndicator={false}>
+          {groups
+            .sort((a, b) => {
+              // Get the most recent activity time for each group
+              const getRecentActivityTime = (group: typeof a) => {
+                if (!group.lastMessage) {
+                  // No messages, use group creation time
+                  return group.createdAt.getTime();
+                }
+                // Use whichever is more recent: last message or group creation
+                return Math.max(
+                  group.lastMessage.createdAt.getTime(),
+                  group.createdAt.getTime()
+                );
+              };
+              
+              const aTime = getRecentActivityTime(a);
+              const bTime = getRecentActivityTime(b);
+              
+              // Sort by most recent activity first
+              return bTime - aTime;
+            })
+            .map((group) => {
+              const missingMembers = getMissingMembers(group);
+              const isWednesday = new Date().getDay() === 3;
+              
+              return (
+                <TouchableOpacity
+                  key={group.id}
+                  style={styles.chatItem}
+                  onPress={() => router.push(`/chat/${group.id}`)}
+                >
+                  {/* Group Avatar */}
+                  <View style={styles.groupAvatarContainer}>
+                    <View style={styles.groupAvatar}>
+                      <Text style={styles.groupAvatarText}>
+                        {group.name.split(' ').map(word => word[0]).join('').slice(0, 2)}
+                      </Text>
+                    </View>
+                    {group.unreadCount > 0 && (
+                      <View style={styles.unreadBadge}>
+                        <Text style={styles.unreadText}>{group.unreadCount}</Text>
+                      </View>
                     )}
                   </View>
-                ))}
-                {group.members.length > 3 && (
-                  <View style={[styles.memberAvatar, { marginLeft: -8 }]}>
-                    <Text style={styles.moreMembers}>+{group.members.length - 3}</Text>
+
+                  {/* Chat Info */}
+                  <View style={styles.chatInfo}>
+                    <View style={styles.chatHeader}>
+                      <Text style={styles.groupName}>{group.name}</Text>
+                      {group.lastMessage && (
+                        <Text style={styles.timestamp}>
+                          {getTimeAgo(group.lastMessage.createdAt)}
+                        </Text>
+                      )}
+                    </View>
+
+                    {group.lastMessage ? (
+                      <View style={styles.lastMessageContainer}>
+                        <Text style={styles.lastMessageSender}>
+                          {group.lastMessage.userName}:
+                        </Text>
+                        <Text style={styles.lastMessage} numberOfLines={1}>
+                          {group.lastMessage.caption}
+                        </Text>
+                      </View>
+                    ) : (
+                      <Text style={styles.noMessages}>No waffles yet this week</Text>
+                    )}
+
+                    {/* Wednesday Nudge Indicator */}
+                    {isWednesday && missingMembers.length > 0 && (
+                      <View style={styles.nudgeIndicator}>
+                        <Clock size={12} color="#F97316" />
+                        <Text style={styles.nudgeText}>
+                          Waiting for {missingMembers.length} member{missingMembers.length > 1 ? 's' : ''}
+                        </Text>
+                      </View>
+                    )}
                   </View>
-                )}
-              </View>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
+
+                  {/* Member Avatars */}
+                  <View style={styles.memberAvatars}>
+                    {group.members.slice(0, 3).map((member, index) => (
+                      <View
+                        key={member.id}
+                        style={[
+                          styles.memberAvatar,
+                          { marginLeft: index > 0 ? -8 : 0 },
+                          !member.hasPostedThisWeek && styles.memberAvatarPending
+                        ]}
+                      >
+                        <Image source={{ uri: member.avatar || 'https://via.placeholder.com/28' }} style={styles.memberAvatarImage} />
+                        {!member.hasPostedThisWeek && member.id !== currentUser?.id && (
+                          <View style={styles.pendingIndicator} />
+                        )}
+                      </View>
+                    ))}
+                    {group.members.length > 3 && (
+                      <View style={[styles.memberAvatar, { marginLeft: -8 }]}>
+                        <Text style={styles.moreMembers}>+{group.members.length - 3}</Text>
+                      </View>
+                    )}
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+        </ScrollView>
+      )}
 
       {/* Empty State */}
-      {groups.length === 0 && (
+              {hasGroupsInitLoaded && groups.length === 0 && (
         <View style={styles.emptyState}>
           <MessageCircle size={48} color="#D1D5DB" />
           <Text style={styles.emptyTitle}>No waffle groups yet</Text>
@@ -868,5 +852,11 @@ const styles = StyleSheet.create({
     color: '#9CA3AF',
     textAlign: 'center',
     lineHeight: 20,
+  },
+  centerLoadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
   },
 });

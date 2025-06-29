@@ -57,6 +57,7 @@ export interface WaffleState {
   messages: WaffleMessage[];
   memberCache: Map<string, UserProfile>; // Cache of all group members
   isLoading: boolean;
+  hasGroupsInitLoaded: boolean;
   error: string | null;
   
   // Actions
@@ -71,6 +72,7 @@ export interface WaffleState {
   joinGroup: (inviteCode: string) => Promise<void>;
   createGroup: (name: string) => Promise<Group>;
   setLoading: (loading: boolean) => void;
+  setGroupsLoaded: (loaded: boolean) => void;
   setError: (error: string | null) => void;
   clearData: () => void; // NEW: Clear data on logout
   
@@ -247,17 +249,29 @@ export const useWaffleStore = create<WaffleState>((set, get) => ({
   messages: [], // Will be loaded per group
   memberCache: new Map(),
   isLoading: false,
+  hasGroupsInitLoaded: false,
   error: null,
 
   setCurrentUser: (user) => set({ currentUser: user }),
 
   // NEW: Load real groups from Supabase
   loadUserGroups: async () => {
-    const currentUser = get().currentUser;
-    if (!currentUser) {
-      console.log('❌ Cannot load groups: No user authenticated');
+    const state = get();
+    
+    // Prevent multiple concurrent calls
+    if (state.isLoading && !state.hasGroupsInitLoaded) {
+      console.log('⏳ Already loading groups, skipping duplicate call');
       return;
     }
+    
+    const currentUser = state.currentUser;
+    if (!currentUser) {
+      console.log('❌ Cannot load groups: No user authenticated');
+      set({ hasGroupsInitLoaded: false });
+      return;
+    }
+
+    console.log('📋 Starting to load groups for user:', currentUser.name);
 
     try {
       set({ isLoading: true, error: null });
@@ -265,8 +279,11 @@ export const useWaffleStore = create<WaffleState>((set, get) => ({
       const { data: userGroups, error } = await groupsService.getUserGroups();
       
       if (error) {
+        console.error('❌ Database error loading groups:', error);
         throw new Error(error.message);
       }
+
+      console.log('📋 Raw groups data from database:', userGroups?.length || 0, 'groups');
 
       if (userGroups) {
         // Transform API format to store format
@@ -316,8 +333,9 @@ export const useWaffleStore = create<WaffleState>((set, get) => ({
           })
         );
 
-        set({ groups: transformedGroups });
+        set({ groups: transformedGroups, hasGroupsInitLoaded: true });
         console.log('✅ Loaded', transformedGroups.length, 'groups from Supabase');
+        console.log('📊 Final groups in store:', transformedGroups.map(g => ({ id: g.id, name: g.name, memberCount: g.members.length })));
 
         // Populate member cache with all group members
         const allMemberProfiles: UserProfile[] = [];
@@ -681,6 +699,8 @@ export const useWaffleStore = create<WaffleState>((set, get) => ({
   },
   
   setLoading: (loading) => set({ isLoading: loading }),
+  
+  setGroupsLoaded: (loaded: boolean) => set({ hasGroupsInitLoaded: loaded }),
   
   setError: (error) => set({ error }),
   

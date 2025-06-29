@@ -43,6 +43,15 @@ export const groupsService = {
   async getUserGroups(): Promise<{ data: GroupWithMembers[] | null; error: any }> {
     if (__DEV__) console.log('📋 Fetching user groups with secure function...')
     
+    // First check if user is authenticated
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      if (__DEV__) console.error('❌ Auth check failed in getUserGroups:', authError)
+      return { data: null, error: authError || new Error('Not authenticated') }
+    }
+    
+    if (__DEV__) console.log('👤 Authenticated user in getUserGroups:', user.id)
+    
     const { data, error } = await supabase.rpc('get_user_groups')
 
     if (error) {
@@ -51,6 +60,8 @@ export const groupsService = {
     }
 
     if (__DEV__) console.log('✅ Groups fetched:', data?.length || 0)
+    if (__DEV__ && data) console.log('📊 Group details:', data.map((g: any) => ({ id: g.id, name: g.name })))
+    
     return { data: data as GroupWithMembers[] || [], error: null }
   },
 
