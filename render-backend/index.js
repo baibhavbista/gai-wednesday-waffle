@@ -78,23 +78,35 @@ app.post(
     try {
       if (audioFile) {
         // Option 1: An audio chunk was provided directly.
-        console.log('Processing direct audio chunk.', audioFile.path);
-        audioPathForTranscription = audioFile.path;
-        tempFiles.push(audioPathForTranscription);
+        console.log('Processing direct audio chunk:', {
+          path: audioFile.path,
+          originalname: audioFile.originalname,
+          mimetype: audioFile.mimetype,
+          size: audioFile.size
+        });
 
-        // okay here lets use ffmpeg to get the metadata for the audio file and then print it to the console
-        const metadata = await new Promise((resolve, reject) => {
-          const command = `ffmpeg -i ${audioFile.path} -f null -`;
+        // Convert m4a to mp3 for better compatibility with Whisper
+        const mp3Path = `${audioFile.path}.mp3`;
+        await new Promise((resolve, reject) => {
+          const command = `ffmpeg -i ${audioFile.path} -c:a libmp3lame -q:a 2 ${mp3Path}`;
           exec(command, (error, stdout, stderr) => {
             if (error) {
               console.error(`FFmpeg error: ${error.message}`);
-              return reject(new Error('Failed to process audio.'));
+              console.error('FFmpeg stderr:', stderr);
+              return reject(new Error('Failed to convert audio to MP3.'));
             }
-            console.log('FFmpeg metadata:', stdout);
-            resolve(stdout);
+            audioPathForTranscription = mp3Path;
+            tempFiles.push(mp3Path, audioFile.path);
+            resolve();
           });
         });
-        console.log('FFmpeg metadata2 :', metadata);
+
+        // Log the converted file details
+        console.log('Audio converted to MP3:', {
+          originalPath: audioFile.path,
+          mp3Path: audioPathForTranscription
+        });
+
       } else if (videoFile) {
         // Option 2: A video chunk was provided, extract audio.
         console.log('Processing video chunk, extracting audio.');
