@@ -54,74 +54,97 @@ const authenticateToken = (req, res, next) => {
 
 // The main endpoint for generating captions.
 // It's protected by the authentication middleware.
-// 'videoChunk' should match the field name used in the client-side form data.
-app.post('/generate-captions', authenticateToken, upload.single('videoChunk'), async (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: 'No video chunk uploaded.' });
-  }
+// It now accepts either a 'videoChunk' or an 'audioChunk'.
+app.post(
+  '/generate-captions',
+  authenticateToken,
+  upload.fields([
+    { name: 'videoChunk', maxCount: 1 },
+    { name: 'audioChunk', maxCount: 1 },
+  ]),
+  async (req, res) => {
+    const videoFile = req.files?.videoChunk?.[0];
+    const audioFile = req.files?.audioChunk?.[0];
 
-  const videoPath = req.file.path;
-  const audioPath = `${videoPath}.mp3`;
-  // The client will send style examples as a JSON string array.
-  const styleCaptions = JSON.parse(req.body.styleCaptions || '[]');
+    if (!videoFile && !audioFile) {
+      return res.status(400).json({ error: 'No video or audio chunk uploaded.' });
+    }
 
-  let tempFiles = [videoPath];
+    // The client will send style examples as a JSON string array.
+    const styleCaptions = JSON.parse(req.body.styleCaptions || '[]');
+    let tempFiles = [];
+    let audioPathForTranscription;
 
-  try {
-    // Step 1: Extract audio with FFmpeg
-    await new Promise((resolve, reject) => {
-      const command = `ffmpeg -i ${videoPath} -vn -acodec libmp3lame -q:a 2 ${audioPath}`;
-      exec(command, (error) => {
-        if (error) {
-          console.error(`FFmpeg error: ${error.message}`);
-          return reject(new Error('Failed to process video.'));
-        }
-        tempFiles.push(audioPath);
-        resolve();
+    try {
+      if (audioFile) {
+        // Option 1: An audio chunk was provided directly.
+        console.log('Processing direct audio chunk.');
+        audioPathForTranscription = audioFile.path;
+        tempFiles.push(audioPathForTranscription);
+      } else if (videoFile) {
+        // Option 2: A video chunk was provided, extract audio.
+        console.log('Processing video chunk, extracting audio.');
+        const videoPath = videoFile.path;
+        const extractedAudioPath = `${videoPath}.mp3`;
+        tempFiles.push(videoPath);
+
+        await new Promise((resolve, reject) => {
+          const command = `ffmpeg -i ${videoPath} -vn -acodec libmp3lame -q:a 2 ${extractedAudioPath}`;
+          exec(command, (error) => {
+            if (error) {
+              console.error(`FFmpeg error: ${error.message}`);
+              return reject(new Error('Failed to process video.'));
+            }
+            tempFiles.push(extractedAudioPath);
+            audioPathForTranscription = extractedAudioPath;
+            resolve();
+          });
+        });
+      }
+
+      // Step 2: Transcribe audio with Whisper
+      const transcript = await openai.audio.transcriptions.create({
+        file: fs.createReadStream(audioPathForTranscription),
+        model: 'whisper-1',
       });
-    });
 
-    // Step 2: Transcribe audio with Whisper
-    const transcript = await openai.audio.transcriptions.create({
-      file: fs.createReadStream(audioPath),
-      model: 'whisper-1',
-    });
+      console.log('Transcription:', transcript.text);
 
-    console.log('Transcription:', transcript.text);
+      // Step 3: Generate captions with GPT-4o
+      const prompt = `
+        Based on the following transcript, generate 3 short, engaging captions for a social media video.
+        The user wants captions in the style of these examples: "${styleCaptions.join('", "')}".
+        Each caption must be 70 characters or less.
+        The output must be a JSON array of strings, like this: ["caption 1", "caption 2", "caption 3"].
+        Transcript: "${transcript.text}"
+      `;
 
-    // Step 3: Generate captions with GPT-4o
-    const prompt = `
-      Based on the following transcript, generate 3 short, engaging captions for a social media video.
-      The user wants captions in the style of these examples: "${styleCaptions.join('", "')}".
-      Each caption must be 70 characters or less.
-      The output must be a JSON array of strings, like this: ["caption 1", "caption 2", "caption 3"].
-      Transcript: "${transcript.text}"
-    `;
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [{ role: 'system', content: prompt }],
+        max_tokens: 100,
+        temperature: 0.7,
+        response_format: { type: 'json_object' },
+      });
 
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [{ role: 'system', content: prompt }],
-      max_tokens: 100,
-      temperature: 0.7,
-      response_format: { type: "json_object" },
-    });
+      const suggestions = JSON.parse(response.choices[0].message.content);
 
-    const suggestions = JSON.parse(response.choices[0].message.content);
-
-    // console logs for suggestions
-    console.log('Caption Suggestions:', suggestions);
-    res.json({ suggestions });
-
-  } catch (error) {
-    console.error('Error in caption generation pipeline:', error);
-    res.status(500).json({ error: 'An error occurred during caption generation.' });
-  } finally {
-    // Step 4: Cleanup all temporary files
-    tempFiles.forEach(file => fs.unlink(file, err => {
-      if (err) console.error(`Error deleting temp file ${file}:`, err);
-    }));
+      // console logs for suggestions
+      console.log('Caption Suggestions:', suggestions);
+      res.json({ suggestions });
+    } catch (error) {
+      console.error('Error in caption generation pipeline:', error);
+      res.status(500).json({ error: 'An error occurred during caption generation.' });
+    } finally {
+      // Step 4: Cleanup all temporary files
+      tempFiles.forEach((file) =>
+        fs.unlink(file, (err) => {
+          if (err) console.error(`Error deleting temp file ${file}:`, err);
+        })
+      );
+    }
   }
-});
+);
 
 // Endpoint for processing full video transcriptions, triggered by Supabase Storage webhook.
 app.post('/process-full-video', async (req, res) => {
