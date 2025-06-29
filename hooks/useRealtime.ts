@@ -123,6 +123,8 @@ export function useRealtime() {
     updateGroupRealtime,
     removeGroupRealtime,
     updateGroupMembers,
+    updateGroupLastMessage,
+    incrementGroupUnreadCount,
     loadUserGroups,
     currentGroupId 
   } = useWaffleStore()
@@ -157,17 +159,36 @@ export function useRealtime() {
           table: 'waffles',
           filter: `group_id=eq.${groupId}`,
         },
-        (payload) => {
+        async (payload) => {
           if (__DEV__) console.log('🧇 Waffle real-time update:', payload.eventType, payload)
 
           switch (payload.eventType) {
             case 'INSERT':
               const newWaffle = payload.new as WaffleRow
-              // TODO: Fetch user details for proper display
-              const newMessage = waffleRowToMessage(newWaffle, 'New User', null)
-              addWaffle(newMessage)
-              callbacksRef.current.onWaffleUpdate?.(newWaffle)
-              if (__DEV__) console.log('✅ Added new waffle to store via real-time:', newWaffle.id)
+              
+              // Fetch user details for proper display
+              try {
+                // Fetch user profile for proper display
+                const { data: profile } = await supabase
+                  .from('profiles')
+                  .select('name, avatar_url')
+                  .eq('id', newWaffle.user_id)
+                  .single()
+                
+                const userName = profile?.name || 'Unknown User'
+                const userAvatar = profile?.avatar_url || null
+                
+                const newMessage = waffleRowToMessage(newWaffle, userName, userAvatar)
+                addWaffle(newMessage)
+                callbacksRef.current.onWaffleUpdate?.(newWaffle)
+                if (__DEV__) console.log('✅ Added new waffle to store via real-time:', newWaffle.id, 'by', userName)
+              } catch (error) {
+                if (__DEV__) console.error('❌ Error fetching user details for waffle:', error)
+                // Still add the waffle with basic info
+                const newMessage = waffleRowToMessage(newWaffle, 'Unknown User', null)
+                addWaffle(newMessage)
+                callbacksRef.current.onWaffleUpdate?.(newWaffle)
+              }
               break
 
             case 'UPDATE':
@@ -223,6 +244,89 @@ export function useRealtime() {
       })
 
     channelsRef.current.set(`group-${groupId}`, channel)
+  }
+
+  // Subscribe to group for summary updates (for Chats screen)
+  const subscribeToGroupSummary = (groupId: string) => {
+    if (!session?.user || channelsRef.current.has(`summary-${groupId}`)) return
+
+    if (__DEV__) console.log('📋 Subscribing to group summary:', groupId)
+
+    const channel = supabase
+      .channel(`group-summary-${groupId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'waffles',
+          filter: `group_id=eq.${groupId}`,
+        },
+        async (payload) => {
+          if (__DEV__) console.log('📨 New waffle for group summary:', payload)
+
+          const newWaffle = payload.new as WaffleRow
+          
+          // Convert to WaffleMessage format for lastMessage
+          const newMessage = waffleRowToMessage(newWaffle, 'Loading...', null)
+          
+          // Fetch user details for proper display
+          try {
+            const { data: { user } } = await supabase.auth.getUser()
+            
+            // If it's from the current user, don't increment unread count
+            const isFromCurrentUser = newWaffle.user_id === user?.id
+            
+            // Update group's last message
+            updateGroupLastMessage(groupId, newMessage)
+            
+            // Increment unread count only if not from current user
+            if (!isFromCurrentUser) {
+              incrementGroupUnreadCount(groupId)
+            }
+            
+            if (__DEV__) console.log('✅ Updated group summary for:', groupId, 'from current user:', isFromCurrentUser)
+          } catch (error) {
+            if (__DEV__) console.error('❌ Error updating group summary:', error)
+            // Still update last message even if we can't determine user
+            updateGroupLastMessage(groupId, newMessage)
+            incrementGroupUnreadCount(groupId)
+          }
+        }
+      )
+      .subscribe((status) => {
+        if (__DEV__) console.log('📡 Group summary subscription status:', status, groupId)
+      })
+
+    channelsRef.current.set(`summary-${groupId}`, channel)
+  }
+
+  // Unsubscribe from group summary
+  const unsubscribeFromGroupSummary = (groupId: string) => {
+    const channelKey = `summary-${groupId}`
+    const channel = channelsRef.current.get(channelKey)
+    
+    if (channel) {
+      if (__DEV__) console.log('❌ Unsubscribing from group summary:', groupId)
+      
+      supabase.removeChannel(channel)
+      channelsRef.current.delete(channelKey)
+    }
+  }
+
+  // Subscribe to all groups for summary updates
+  const subscribeToAllGroupsSummary = (groupIds: string[]) => {
+    if (__DEV__) console.log('📋 Subscribing to all groups summary:', groupIds.length, 'groups')
+    
+    // Unsubscribe from any existing summary subscriptions
+    const existingSummaryChannels = Array.from(channelsRef.current.keys()).filter(key => key.startsWith('summary-'))
+    existingSummaryChannels.forEach(key => {
+      const groupId = key.replace('summary-', '')
+      unsubscribeFromGroupSummary(groupId)
+    })
+    
+    // Subscribe to all current groups
+    groupIds.forEach(groupId => subscribeToGroupSummary(groupId))
   }
 
   // Unsubscribe from a group
@@ -435,6 +539,9 @@ export function useRealtime() {
     subscribeToGroup,
     unsubscribeFromGroup,
     subscribeToUserGroups,
+    subscribeToGroupSummary,
+    unsubscribeFromGroupSummary,
+    subscribeToAllGroupsSummary,
     setCallbacks,
     postWaffleOptimistic,
     removeOptimisticWaffle,

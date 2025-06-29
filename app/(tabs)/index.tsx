@@ -22,7 +22,7 @@ import { Plus, MessageCircle, Clock, Users, UserPlus } from 'lucide-react-native
 
 export default function ChatsScreen() {
   const { groups, currentUser, isLoading, error, loadUserGroups, joinGroup, createGroup, clearData } = useWaffleStore();
-  const { status, setCallbacks } = useRealtime();
+  const { status, setCallbacks, subscribeToAllGroupsSummary } = useRealtime();
   const { isReady, isAuthenticated } = useAuth();
   const router = useRouter();
 
@@ -57,6 +57,15 @@ export default function ChatsScreen() {
       clearData();
     }
   }, [isReady, isAuthenticated, loadUserGroups, clearData]);
+
+  // Subscribe to all groups for real-time last message updates
+  useEffect(() => {
+    if (isAuthenticated && groups.length > 0) {
+      const groupIds = groups.map(group => group.id);
+      subscribeToAllGroupsSummary(groupIds);
+      if (__DEV__) console.log('📋 Chats screen subscribed to', groupIds.length, 'groups for real-time updates');
+    }
+  }, [isAuthenticated, groups, subscribeToAllGroupsSummary]);
 
   const handleJoinGroup = async () => {
     if (!inviteCode.trim()) {

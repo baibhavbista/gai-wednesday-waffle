@@ -33,13 +33,15 @@ export default function ChatScreen() {
     addReaction,
     markMessageViewed,
     addMessage,
+    clearGroupUnreadCount,
+    setCurrentGroup,
   } = useWaffleStore();
 
   const [showNudge, setShowNudge] = useState(false);
   const [messageText, setMessageText] = useState('');
 
-  // Real-time hook for this specific group
-  const { subscribeToGroup, unsubscribeFromGroup } = useRealtime();
+  // Real-time hook - no longer need manual subscription calls
+  const { } = useRealtime();
 
   const group = groups.find(g => g.id === groupId);
   const groupMessages = messages.filter(m => m.groupId === groupId).sort(
@@ -58,13 +60,16 @@ export default function ChatScreen() {
   useEffect(() => {
     if (groupId) {
       loadGroupMessages(groupId);
-      // Subscribe to real-time updates for this group
-      subscribeToGroup(groupId);
+      // Set current group for automatic real-time subscription
+      setCurrentGroup(groupId);
+      // Clear unread count when entering the group
+      clearGroupUnreadCount(groupId);
     }
 
     return () => {
+      // Clear current group when leaving
       if (groupId) {
-        unsubscribeFromGroup(groupId);
+        setCurrentGroup(null);
       }
     };
   }, [groupId]); // Only depend on groupId, not the functions

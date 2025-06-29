@@ -56,7 +56,7 @@ export interface WaffleState {
   setCurrentUser: (user: WaffleState['currentUser']) => void;
   loadUserGroups: () => Promise<void>; // NEW: Real data loading
   setGroups: (groups: Group[]) => void;
-  setCurrentGroup: (groupId: string) => void;
+  setCurrentGroup: (groupId: string | null) => void;
   addMessage: (message: Omit<WaffleMessage, 'id' | 'createdAt' | 'expiresAt' | 'likes' | 'hasLiked' | 'viewed' | 'reactions'>) => Promise<void>;
   likeMessage: (messageId: string) => void;
   addReaction: (messageId: string, emoji: string) => void;
@@ -78,6 +78,9 @@ export interface WaffleState {
   updateGroupRealtime: (groupId: string, updates: Partial<Group>) => void;
   removeGroupRealtime: (groupId: string) => void;
   updateGroupMembers: (groupId: string, members: Group['members']) => void;
+  updateGroupLastMessage: (groupId: string, message: WaffleMessage) => void;
+  incrementGroupUnreadCount: (groupId: string) => void;
+  clearGroupUnreadCount: (groupId: string) => void;
   
   // Optimistic updates
   addOptimisticGroup: (group: Group) => string; // Returns temp ID
@@ -332,7 +335,7 @@ export const useWaffleStore = create<WaffleState>((set, get) => ({
   
   setGroups: (groups) => set({ groups }),
   
-  setCurrentGroup: (groupId) => set({ currentGroupId: groupId }),
+  setCurrentGroup: (groupId: string | null) => set({ currentGroupId: groupId }),
   
   addMessage: async (messageData) => {
     const currentUser = get().currentUser;
@@ -878,5 +881,38 @@ export const useWaffleStore = create<WaffleState>((set, get) => ({
       ),
     }));
     if (__DEV__) console.log('✅ Replaced optimistic message with real:', tempId, '→', realMessage.id);
+  },
+
+  updateGroupLastMessage: (groupId, message) => {
+    set((state) => ({
+      groups: state.groups.map(group => 
+        group.id === groupId 
+          ? { ...group, lastMessage: message }
+          : group
+      ),
+    }));
+    if (__DEV__) console.log('📨 Updated group last message:', groupId, message.caption);
+  },
+
+  incrementGroupUnreadCount: (groupId) => {
+    set((state) => ({
+      groups: state.groups.map(group => 
+        group.id === groupId 
+          ? { ...group, unreadCount: group.unreadCount + 1 }
+          : group
+      ),
+    }));
+    if (__DEV__) console.log('🔔 Incremented unread count for group:', groupId);
+  },
+
+  clearGroupUnreadCount: (groupId) => {
+    set((state) => ({
+      groups: state.groups.map(group => 
+        group.id === groupId 
+          ? { ...group, unreadCount: 0 }
+          : group
+      ),
+    }));
+    if (__DEV__) console.log('✅ Cleared unread count for group:', groupId);
   },
 }));
