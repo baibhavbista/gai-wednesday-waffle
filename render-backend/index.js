@@ -78,9 +78,23 @@ app.post(
     try {
       if (audioFile) {
         // Option 1: An audio chunk was provided directly.
-        console.log('Processing direct audio chunk.');
+        console.log('Processing direct audio chunk.', audioFile.path);
         audioPathForTranscription = audioFile.path;
         tempFiles.push(audioPathForTranscription);
+
+        // okay here lets use ffmpeg to get the metadata for the audio file and then print it to the console
+        const metadata = await new Promise((resolve, reject) => {
+          const command = `ffmpeg -i ${audioFile.path} -f null -`;
+          exec(command, (error, stdout, stderr) => {
+            if (error) {
+              console.error(`FFmpeg error: ${error.message}`);
+              return reject(new Error('Failed to process audio.'));
+            }
+            console.log('FFmpeg metadata:', stdout);
+            resolve(stdout);
+          });
+        });
+        console.log('FFmpeg metadata2 :', metadata);
       } else if (videoFile) {
         // Option 2: A video chunk was provided, extract audio.
         console.log('Processing video chunk, extracting audio.');
