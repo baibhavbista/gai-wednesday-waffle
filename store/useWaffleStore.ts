@@ -23,6 +23,12 @@ export interface WaffleMessage {
   reactions: { [userId: string]: string }; // emoji reactions
 }
 
+export interface UserProfile {
+  id: string;
+  name: string;
+  avatar: string | null;
+}
+
 export interface Group {
   id: string;
   name: string;
@@ -49,6 +55,7 @@ export interface WaffleState {
   groups: Group[];
   currentGroupId: string | null;
   messages: WaffleMessage[];
+  memberCache: Map<string, UserProfile>; // Cache of all group members
   isLoading: boolean;
   error: string | null;
   
@@ -66,6 +73,12 @@ export interface WaffleState {
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   clearData: () => void; // NEW: Clear data on logout
+  
+  // Member cache functions
+  addToMemberCache: (userProfile: UserProfile) => void;
+  getMemberFromCache: (userId: string) => UserProfile | null;
+  updateMemberCache: (userProfiles: UserProfile[]) => void;
+  clearMemberCache: () => void;
   
   // Real-time actions
   addWaffle: (waffle: WaffleMessage) => void;
@@ -232,6 +245,7 @@ export const useWaffleStore = create<WaffleState>((set, get) => ({
   groups: [], // Will be loaded from API when user is authenticated
   currentGroupId: null,
   messages: [], // Will be loaded per group
+  memberCache: new Map(),
   isLoading: false,
   error: null,
 
@@ -304,6 +318,26 @@ export const useWaffleStore = create<WaffleState>((set, get) => ({
 
         set({ groups: transformedGroups });
         console.log('✅ Loaded', transformedGroups.length, 'groups from Supabase');
+
+        // Populate member cache with all group members
+        const allMemberProfiles: UserProfile[] = [];
+        transformedGroups.forEach(group => {
+          group.members.forEach(member => {
+            // Check if we already have this user profile to avoid duplicates
+            const existingProfile = allMemberProfiles.find(p => p.id === member.id);
+            if (!existingProfile) {
+              allMemberProfiles.push({
+                id: member.id,
+                name: member.name,
+                avatar: member.avatar || null,
+              });
+            }
+          });
+        });
+        
+        // Update the member cache with all profiles
+        get().updateMemberCache(allMemberProfiles);
+        console.log('👥 Populated member cache with', allMemberProfiles.length, 'user profiles');
       }
     } catch (error) {
       let errorMessage = 'Failed to load groups';
@@ -330,6 +364,7 @@ export const useWaffleStore = create<WaffleState>((set, get) => ({
     groups: [],
     currentGroupId: null,
     messages: [],
+    memberCache: new Map(),
     error: null,
   }),
   
@@ -651,14 +686,25 @@ export const useWaffleStore = create<WaffleState>((set, get) => ({
   
   // Real-time actions
   addWaffle: (waffle) => {
-    set((state) => ({
-      messages: [waffle, ...state.messages],
-      groups: state.groups.map(group => 
-        group.id === waffle.groupId 
-          ? { ...group, lastMessage: waffle, unreadCount: group.unreadCount + 1 }
-          : group
-      ),
-    }));
+    set((state) => {
+      // Check if message already exists to prevent duplicates
+      const existingMessage = state.messages.find(m => m.id === waffle.id);
+      if (existingMessage) {
+        if (__DEV__) console.log('🔄 Message already exists, skipping duplicate:', waffle.id, 'from:', waffle.userName);
+        return state; // Don't add duplicate
+      }
+
+      if (__DEV__) console.log('➕ Adding new waffle to store:', waffle.id, 'from:', waffle.userName, 'group:', waffle.groupId);
+
+      return {
+        messages: [waffle, ...state.messages],
+        groups: state.groups.map(group => 
+          group.id === waffle.groupId 
+            ? { ...group, lastMessage: waffle, unreadCount: group.unreadCount + 1 }
+            : group
+        ),
+      };
+    });
   },
   
   updateWaffle: (waffleId, updates) => {
@@ -914,5 +960,33 @@ export const useWaffleStore = create<WaffleState>((set, get) => ({
       ),
     }));
     if (__DEV__) console.log('✅ Cleared unread count for group:', groupId);
+  },
+
+  // Member cache functions
+  addToMemberCache: (userProfile) => {
+    set((state) => {
+      const newCache = new Map(state.memberCache);
+      newCache.set(userProfile.id, userProfile);
+      return { memberCache: newCache };
+    });
+    if (__DEV__) console.log('👤 Added to member cache:', userProfile.name);
+  },
+
+  getMemberFromCache: (userId) => {
+    return get().memberCache.get(userId) || null;
+  },
+
+  updateMemberCache: (userProfiles) => {
+    set((state) => {
+      const newCache = new Map(state.memberCache);
+      userProfiles.forEach(profile => newCache.set(profile.id, profile));
+      return { memberCache: newCache };
+    });
+    if (__DEV__) console.log('👥 Updated member cache with', userProfiles.length, 'profiles');
+  },
+
+  clearMemberCache: () => {
+    set({ memberCache: new Map() });
+    if (__DEV__) console.log('🗑️ Cleared member cache');
   },
 }));

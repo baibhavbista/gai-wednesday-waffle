@@ -89,6 +89,18 @@ const handleGroupRealtime = async (
             })) || [],
           }
           addGroupRealtime(storeGroup)
+          
+          // Update member cache with new group members
+          if (members) {
+            const { updateMemberCache } = useWaffleStore.getState()
+            const memberProfiles = members.map(m => ({
+              id: m.user_id,
+              name: m.user_name,
+              avatar: m.user_avatar || null,
+            }))
+            updateMemberCache(memberProfiles)
+          }
+          
           if (__DEV__) console.log('✅ Added new group to store:', group.name)
         }
       } catch (error) {
@@ -126,7 +138,10 @@ export function useRealtime() {
     updateGroupLastMessage,
     incrementGroupUnreadCount,
     loadUserGroups,
-    currentGroupId 
+    currentGroupId,
+    getMemberFromCache,
+    addToMemberCache,
+    updateMemberCache
   } = useWaffleStore()
   
   const [status, setStatus] = useState<RealtimeStatus>({
@@ -149,6 +164,9 @@ export function useRealtime() {
 
     if (__DEV__) console.log('🔄 Subscribing to group:', groupId)
 
+    // Important: Unsubscribe from summary subscription for this group to prevent conflicts
+    unsubscribeFromGroupSummary(groupId)
+
     const channel = supabase
       .channel(`group-waffles-${groupId}`)
       .on(
@@ -166,28 +184,68 @@ export function useRealtime() {
             case 'INSERT':
               const newWaffle = payload.new as WaffleRow
               
-              // Fetch user details for proper display
-              try {
-                // Fetch user profile for proper display
-                const { data: profile } = await supabase
-                  .from('profiles')
-                  .select('name, avatar_url')
-                  .eq('id', newWaffle.user_id)
-                  .single()
+              // Get user details from cache first, fallback to fetching if not found
+              const { getMemberFromCache, addToMemberCache } = useWaffleStore.getState()
+              let userName = 'Unknown User'
+              let userAvatar: string | null = null
+              
+              const cachedUser = getMemberFromCache(newWaffle.user_id)
+              if (cachedUser) {
+                userName = cachedUser.name
+                userAvatar = cachedUser.avatar
+                if (__DEV__) console.log('👤 Used cached user details for group message:', userName)
                 
-                const userName = profile?.name || 'Unknown User'
-                const userAvatar = profile?.avatar_url || null
+                // Check if this is the current user's own message (already added optimistically)
+                const { data: { user } } = await supabase.auth.getUser()
+                if (newWaffle.user_id === user?.id) {
+                  if (__DEV__) console.log('🔄 Skipping own message from real-time (already added optimistically):', newWaffle.id)
+                  return // Don't add own messages via real-time
+                }
                 
                 const newMessage = waffleRowToMessage(newWaffle, userName, userAvatar)
                 addWaffle(newMessage)
                 callbacksRef.current.onWaffleUpdate?.(newWaffle)
                 if (__DEV__) console.log('✅ Added new waffle to store via real-time:', newWaffle.id, 'by', userName)
-              } catch (error) {
-                if (__DEV__) console.error('❌ Error fetching user details for waffle:', error)
-                // Still add the waffle with basic info
-                const newMessage = waffleRowToMessage(newWaffle, 'Unknown User', null)
-                addWaffle(newMessage)
-                callbacksRef.current.onWaffleUpdate?.(newWaffle)
+              } else {
+                // Fallback: fetch user details if not in cache
+                try {
+                  // Check if this is the current user's own message first
+                  const { data: { user } } = await supabase.auth.getUser()
+                  if (newWaffle.user_id === user?.id) {
+                    if (__DEV__) console.log('🔄 Skipping own message from real-time (already added optimistically):', newWaffle.id)
+                    return // Don't add own messages via real-time
+                  }
+                  
+                  const { data: profile } = await supabase
+                    .from('profiles')
+                    .select('name, avatar_url')
+                    .eq('id', newWaffle.user_id)
+                    .single()
+                  
+                  if (profile) {
+                    userName = profile.name || 'Unknown User'
+                    userAvatar = profile.avatar_url || null
+                    
+                    // Add to cache for future use
+                    addToMemberCache({
+                      id: newWaffle.user_id,
+                      name: userName,
+                      avatar: userAvatar,
+                    })
+                    if (__DEV__) console.log('👤 Fetched and cached user details for group message:', userName)
+                  }
+                  
+                  const newMessage = waffleRowToMessage(newWaffle, userName, userAvatar)
+                  addWaffle(newMessage)
+                  callbacksRef.current.onWaffleUpdate?.(newWaffle)
+                  if (__DEV__) console.log('✅ Added new waffle to store via real-time:', newWaffle.id, 'by', userName)
+                } catch (error) {
+                  if (__DEV__) console.error('❌ Error fetching user details for waffle:', error)
+                  // Still add the waffle with fallback info
+                  const newMessage = waffleRowToMessage(newWaffle, 'Unknown User', null)
+                  addWaffle(newMessage)
+                  callbacksRef.current.onWaffleUpdate?.(newWaffle)
+                }
               }
               break
 
@@ -267,10 +325,47 @@ export function useRealtime() {
 
           const newWaffle = payload.new as WaffleRow
           
-          // Convert to WaffleMessage format for lastMessage
-          const newMessage = waffleRowToMessage(newWaffle, 'Loading...', null)
+          // Get user details from cache first, fallback to fetching if not found
+          const { getMemberFromCache } = useWaffleStore.getState()
+          let userName = 'Unknown User'
+          let userAvatar: string | null = null
           
-          // Fetch user details for proper display
+          const cachedUser = getMemberFromCache(newWaffle.user_id)
+          if (cachedUser) {
+            userName = cachedUser.name
+            userAvatar = cachedUser.avatar
+            if (__DEV__) console.log('👤 Used cached user details:', userName)
+          } else {
+            // Fallback: fetch user details if not in cache
+            try {
+              const { data: profile } = await supabase
+                .from('profiles')
+                .select('name, avatar_url')
+                .eq('id', newWaffle.user_id)
+                .single()
+              
+              if (profile) {
+                userName = profile.name || 'Unknown User'
+                userAvatar = profile.avatar_url || null
+                
+                // Add to cache for future use
+                const { addToMemberCache } = useWaffleStore.getState()
+                addToMemberCache({
+                  id: newWaffle.user_id,
+                  name: userName,
+                  avatar: userAvatar,
+                })
+                if (__DEV__) console.log('👤 Fetched and cached user details:', userName)
+              }
+            } catch (error) {
+              if (__DEV__) console.error('❌ Error fetching user profile:', error)
+            }
+          }
+          
+          // Convert to WaffleMessage format for lastMessage
+          const newMessage = waffleRowToMessage(newWaffle, userName, userAvatar)
+          
+          // Fetch current user to check if message is from them
           try {
             const { data: { user } } = await supabase.auth.getUser()
             
@@ -339,6 +434,10 @@ export function useRealtime() {
       
       supabase.removeChannel(channel)
       channelsRef.current.delete(channelKey)
+      
+      // Re-subscribe to summary subscription for this group when leaving detailed view
+      // This ensures the index screen can still receive last message updates
+      subscribeToGroupSummary(groupId)
     }
   }
 
@@ -416,7 +515,16 @@ export function useRealtime() {
                   hasPostedThisWeek: false,
                 }))
                 updateGroupMembers(member.group_id, transformedMembers)
-                if (__DEV__) console.log('✅ Updated group members for:', member.group_id)
+                
+                // Update member cache with any new members
+                const memberProfiles = members.map(m => ({
+                  id: m.user_id,
+                  name: m.user_name,
+                  avatar: m.user_avatar || null,
+                }))
+                updateMemberCache(memberProfiles)
+                
+                if (__DEV__) console.log('✅ Updated group members and cache for:', member.group_id)
               }
             } catch (error) {
               if (__DEV__) console.error('❌ Error updating group members:', error)
