@@ -19,11 +19,12 @@ services:
     buildCommand: "npm install"
     startCommand: "npm start"
 
-    # Define environment variables to be set as secrets in the Render dashboard
+    # Define environment variables. For secrets, 'sync: false' tells Render
+    # to prompt for the value in the dashboard instead of storing it in git.
     envVars:
       - key: SUPABASE_JWT_SECRET
-        fromSecret: true
+        sync: false
       - key: OPENAI_API_KEY
-        fromSecret: true
+        sync: false
       - key: SUPABASE_DB_URL # Full database connection string
-        fromSecret: true
+        sync: false
