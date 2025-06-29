@@ -22,8 +22,9 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// Initialize Supabase client
+// Initialize Supabase clients
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+const serviceRoleClient = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
 // Initialize Postgres pool
 const pool = new Pool({
@@ -174,27 +175,65 @@ app.post(
 
 // Endpoint for processing full video transcriptions, triggered by Supabase Storage webhook.
 app.post('/process-full-video', async (req, res) => {
-  console.log('Received webhook for full video processing.');
+  console.log('Received webhook for full video processing.', req.body.record);
   // The webhook payload from Supabase Storage for a new object.
   const { name: fileName } = req.body.record;
-  const waffleId = path.parse(fileName).name;
+  
+  // Normalize the file path
+  const normalizedPath = fileName.replace(/^\/+/, '').replace(/\/{2,}/g, '/');
+  console.log('Path analysis:', {
+    originalPath: fileName,
+    normalizedPath,
+    segments: normalizedPath.split('/'),
+    extension: path.extname(fileName),
+  });
 
-  if (!fileName || !waffleId) {
+  const waffleId = path.parse(normalizedPath).name;
+
+  if (!normalizedPath || !waffleId) {
     console.error('Invalid webhook payload:', req.body);
     return res.status(400).json({ error: 'Invalid webhook payload.' });
   }
 
   console.log(`Starting processing for waffle ID: ${waffleId}`);
+  console.log('Full webhook payload:', JSON.stringify(req.body, null, 2));
   let tempFiles = [];
 
   try {
-    // 1. Download video from Supabase Storage
-    console.log(`Downloading ${fileName} from Supabase Storage...`);
-    const { data, error: downloadError } = await supabase.storage
-      .from('waffles')
-      .download(fileName);
+    // Verify bucket exists and is accessible
+    console.log('Verifying storage bucket access...');
+    const { data: bucketData, error: bucketError } = await serviceRoleClient.storage
+      .getBucket('waffles');
     
-    if (downloadError) throw downloadError;
+    if (bucketError) {
+      console.error('Bucket verification failed:', bucketError);
+      throw new Error('Failed to verify storage bucket access');
+    }
+    console.log('Bucket verification successful:', bucketData);
+
+    // 1. Download video from Supabase Storage (using service role client)
+    console.log(`Attempting to download from Supabase Storage...`);
+    console.log(`Bucket: waffles`);
+    console.log(`File path: ${normalizedPath}`);
+    console.log(`Using Supabase URL: ${process.env.SUPABASE_URL}`);
+    console.log(`Service role key present: ${!!process.env.SUPABASE_SERVICE_ROLE_KEY}`);
+    
+    const { data, error: downloadError } = await serviceRoleClient.storage
+      .from('waffles')
+      .download(normalizedPath);
+    
+    if (downloadError) {
+      console.error('Supabase download error details:', {
+        message: downloadError.message,
+        status: downloadError?.originalError?.status,
+        statusText: downloadError?.originalError?.statusText,
+        responseBody: await downloadError?.originalError?.text?.(),
+      });
+      throw downloadError;
+    }
+
+    console.log('Download successful, data type:', typeof data);
+    console.log('Data size:', data ? Buffer.from(await data.arrayBuffer()).length : 0, 'bytes');
 
     const videoBuffer = Buffer.from(await data.arrayBuffer());
     const tempVideoPath = tmp.tmpNameSync({ postfix: path.extname(fileName) });
