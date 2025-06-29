@@ -31,7 +31,6 @@ export default function WaffleMessage({
   onViewRecap 
 }: WaffleMessageProps) {
   const [showReactions, setShowReactions] = useState(false);
-  const [showRecap, setShowRecap] = useState(false);
   const router = useRouter();
 
   const isOwnMessage = message.userId === currentUserId;
@@ -56,19 +55,10 @@ export default function WaffleMessage({
     return 'Just now';
   };
 
-  const getExpiryText = () => {
-    if (message.retentionType === 'view-once') return 'View once';
-    if (message.retentionType === 'keep-forever') return 'Saved forever';
-    
-    const now = new Date();
-    const expiresIn = Math.ceil((message.expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-    return `${expiresIn}d left`;
-  };
-
   const reactionEntries = Object.entries(message.reactions);
 
   return (
-    <View style={[styles.container, isOwnMessage && styles.ownMessage]}>
+    <View style={[styles.container, isOwnMessage && styles.ownContainer]}>
       {/* Avatar and Name */}
       {!isOwnMessage && (
         <View style={styles.messageHeader}>
@@ -86,8 +76,8 @@ export default function WaffleMessage({
         </View>
       )}
 
-      {/* Content */}
-      <View style={[styles.messageContent, isOwnMessage && styles.ownMessageContent]}>
+      {/* Message content */}
+      <View style={[styles.messageContainer, isOwnMessage && styles.ownMessageContainer]}>
         {message.content.type === 'text' ? (
           // Text-only message layout
           <View style={styles.textOnlyContainer}>
@@ -98,26 +88,9 @@ export default function WaffleMessage({
         ) : (
           // Media message layout
           <>
-            <TouchableOpacity 
-              style={styles.imageContainer}
-              onPress={() => message.retentionType === 'view-once' && !message.viewed && setShowRecap(!showRecap)}
-              onLongPress={() => setShowReactions(true)}
-            >
-              {message.retentionType === 'view-once' && !message.viewed ? (
-                <View style={styles.viewOnceOverlay}>
-                  <Eye size={32} color="#FFFFFF" />
-                  <Text style={styles.viewOnceText}>Tap to view</Text>
-                </View>
-              ) : (
-                <Image source={{ uri: message.content.url || 'https://via.placeholder.com/300x160' }} style={styles.contentImage} />
-              )}
-              
-              {/* Expiry Badge */}
-              <View style={styles.expiryBadge}>
-                <Clock size={10} color="#FFFFFF" />
-                <Text style={styles.expiryText}>{getExpiryText()}</Text>
-              </View>
-            </TouchableOpacity>
+            <View style={styles.imageContainer}>
+              <Image source={{ uri: message.content.url || 'https://via.placeholder.com/300x160' }} style={styles.contentImage} />
+            </View>
 
             {/* Caption for media messages */}
             {message.caption && (
@@ -172,14 +145,6 @@ export default function WaffleMessage({
           >
             <Smile size={16} color="#9CA3AF" />
           </TouchableOpacity>
-
-          {/* Show expiry badge after emoji button for text messages */}
-          {message.content.type === 'text' && (
-            <View style={styles.textExpiryBadgeInline}>
-              <Clock size={12} color="#9CA3AF" />
-              <Text style={styles.textExpiryTextInline}>{getExpiryText()}</Text>
-            </View>
-          )}
         </View>
       </View>
 
@@ -202,26 +167,6 @@ export default function WaffleMessage({
           </View>
         </View>
       )}
-
-      {/* AI Recap Modal */}
-      {showRecap && (
-        <View style={styles.recapOverlay}>
-          <View style={styles.recapModal}>
-            <Text style={styles.recapTitle}>AI Catch-up Recap</Text>
-            <Text style={styles.recapText}>
-              This waffle shows a cozy coffee moment at the recommended shop. The atmosphere 
-              looks perfect for some quality coffee time, and it seems like the group's 
-              suggestion was a hit! The setting appears warm and inviting.
-            </Text>
-            <TouchableOpacity 
-              style={styles.recapCloseButton}
-              onPress={() => setShowRecap(false)}
-            >
-              <Text style={styles.recapCloseText}>Close</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
     </View>
   );
 }
@@ -231,7 +176,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     maxWidth: width * 0.8,
   },
-  ownMessage: {
+  ownContainer: {
     alignSelf: 'flex-end',
   },
   messageHeader: {
@@ -267,7 +212,7 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Regular',
     color: '#9CA3AF',
   },
-  messageContent: {
+  messageContainer: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 12,
@@ -280,7 +225,7 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
-  ownMessageContent: {
+  ownMessageContainer: {
     backgroundColor: '#FEF7ED',
   },
   textOnlyContainer: {
@@ -296,40 +241,6 @@ const styles = StyleSheet.create({
   ownTextContent: {
     color: '#1F2937',
   },
-  textExpiryBadge: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F9FAFB',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  textExpiryText: {
-    fontSize: 10,
-    fontFamily: 'Inter-Medium',
-    color: '#9CA3AF',
-    marginLeft: 2,
-  },
-  textExpiryBadgeInline: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F3F4F6',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginLeft: 12,
-  },
-  textExpiryTextInline: {
-    fontSize: 11,
-    fontFamily: 'Inter-Medium',
-    color: '#9CA3AF',
-    marginLeft: 4,
-  },
   imageContainer: {
     borderRadius: 12,
     overflow: 'hidden',
@@ -340,36 +251,6 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 160,
     resizeMode: 'cover',
-  },
-  viewOnceOverlay: {
-    width: '100%',
-    height: 160,
-    backgroundColor: '#374151',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  viewOnceText: {
-    color: '#FFFFFF',
-    fontFamily: 'Inter-Medium',
-    fontSize: 12,
-    marginTop: 4,
-  },
-  expiryBadge: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
-  },
-  expiryText: {
-    fontSize: 10,
-    fontFamily: 'Inter-Medium',
-    color: '#FFFFFF',
-    marginLeft: 2,
   },
   caption: {
     fontSize: 14,
@@ -454,47 +335,5 @@ const styles = StyleSheet.create({
   },
   reactionOptionEmoji: {
     fontSize: 24,
-  },
-  recapOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 16,
-  },
-  recapModal: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 20,
-    margin: 20,
-    maxWidth: width - 80,
-  },
-  recapTitle: {
-    fontSize: 16,
-    fontFamily: 'Poppins-SemiBold',
-    color: '#1F2937',
-    marginBottom: 12,
-  },
-  recapText: {
-    fontSize: 14,
-    fontFamily: 'Inter-Regular',
-    color: '#374151',
-    lineHeight: 20,
-    marginBottom: 16,
-  },
-  recapCloseButton: {
-    backgroundColor: '#F97316',
-    borderRadius: 8,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  recapCloseText: {
-    color: '#FFFFFF',
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 14,
   },
 });

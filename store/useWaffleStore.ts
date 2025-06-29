@@ -14,8 +14,6 @@ export interface WaffleMessage {
   };
   caption: string;
   createdAt: Date;
-  expiresAt: Date;
-  retentionType: 'view-once' | '7-day' | 'keep-forever';
   groupId: string;
   viewed: boolean;
   likes: number;
@@ -65,7 +63,7 @@ export interface WaffleState {
   loadUserGroups: () => Promise<void>; // NEW: Real data loading
   setGroups: (groups: Group[]) => void;
   setCurrentGroup: (groupId: string | null) => void;
-  addMessage: (message: Omit<WaffleMessage, 'id' | 'createdAt' | 'expiresAt' | 'likes' | 'hasLiked' | 'viewed' | 'reactions'>) => Promise<void>;
+  addMessage: (message: Omit<WaffleMessage, 'id' | 'createdAt' | 'likes' | 'hasLiked' | 'viewed' | 'reactions'>) => Promise<void>;
   likeMessage: (messageId: string) => void;
   addReaction: (messageId: string, emoji: string) => void;
   markMessageViewed: (messageId: string) => void;
@@ -105,7 +103,7 @@ export interface WaffleState {
   // Real waffle/message management
   loadGroupMessages: (groupId: string) => Promise<void>;
   setGroupMessages: (groupId: string, messages: WaffleMessage[]) => void;
-  addOptimisticMessage: (message: Omit<WaffleMessage, 'id' | 'createdAt' | 'expiresAt' | 'likes' | 'hasLiked' | 'viewed' | 'reactions'>) => string;
+  addOptimisticMessage: (message: Omit<WaffleMessage, 'id' | 'createdAt' | 'likes' | 'hasLiked' | 'viewed' | 'reactions'>) => string;
   removeOptimisticMessage: (tempId: string) => void;
   replaceOptimisticMessage: (tempId: string, realMessage: WaffleMessage) => void;
 }
@@ -130,8 +128,6 @@ const mockMessages: WaffleMessage[] = [
     },
     caption: "Finally trying that coffee shop you all recommended! ☕️",
     createdAt: new Date('2024-01-17T10:30:00'),
-    expiresAt: new Date('2024-01-24T10:30:00'),
-    retentionType: '7-day',
     groupId: 'group-1',
     viewed: false,
     likes: 3,
@@ -149,8 +145,6 @@ const mockMessages: WaffleMessage[] = [
     },
     caption: "Desk setup is finally coming together 🎯",
     createdAt: new Date('2024-01-16T15:45:00'),
-    expiresAt: new Date('2024-01-23T15:45:00'),
-    retentionType: '7-day',
     groupId: 'group-1',
     viewed: true,
     likes: 5,
@@ -168,8 +162,6 @@ const mockMessages: WaffleMessage[] = [
     },
     caption: "Morning run before the chaos begins 🏃‍♂️",
     createdAt: new Date('2024-01-15T07:20:00'),
-    expiresAt: new Date('2024-01-22T07:20:00'),
-    retentionType: '7-day',
     groupId: 'group-1',
     viewed: true,
     likes: 2,
@@ -314,8 +306,6 @@ export const useWaffleStore = create<WaffleState>((set, get) => ({
                 },
                 caption: latestWaffle.caption || '',
                 createdAt: new Date(latestWaffle.created_at),
-                expiresAt: new Date(latestWaffle.expires_at || latestWaffle.created_at),
-                retentionType: latestWaffle.retention_type as 'view-once' | '7-day' | 'keep-forever',
                 groupId: latestWaffle.group_id!,
                 viewed: false, // TODO: Track viewed status
                 likes: 0, // TODO: Implement likes
@@ -403,16 +393,7 @@ export const useWaffleStore = create<WaffleState>((set, get) => ({
     console.log('   - content.type:', messageData.content.type);
     console.log('   - content.url:', messageData.content.url ? 'present' : 'missing');
     console.log('   - caption:', messageData.caption);
-    console.log('   - retentionType (input):', messageData.retentionType);
     console.log('   - groupId:', messageData.groupId);
-
-    // Convert retention type for database
-    const dbRetentionType: 'view_once' | '7_days' | 'forever' = 
-      messageData.retentionType === 'view-once' ? 'view_once' : 
-      messageData.retentionType === '7-day' ? '7_days' : 'forever';
-    console.log('🔄 Retention type transformation:');
-    console.log('   - Frontend:', messageData.retentionType);
-    console.log('   - Database:', dbRetentionType);
 
     // Add optimistic message immediately
     const tempId = get().addOptimisticMessage(messageData);
@@ -424,7 +405,6 @@ export const useWaffleStore = create<WaffleState>((set, get) => ({
         content_url: messageData.content.type === 'text' ? null : messageData.content.url,
         content_type: messageData.content.type,
         caption: messageData.caption,
-        retention_type: dbRetentionType,
       };
 
       console.log('📤 Sending to database service:');
@@ -432,7 +412,6 @@ export const useWaffleStore = create<WaffleState>((set, get) => ({
       console.log('   - content_url:', createData.content_url ? 'present' : 'null');
       console.log('   - content_type:', createData.content_type);
       console.log('   - caption:', createData.caption);
-      console.log('   - retention_type (DB format):', createData.retention_type);
 
       // Post to database
       const { data: newWaffle, error } = await wafflesService.create(createData);
@@ -450,9 +429,6 @@ export const useWaffleStore = create<WaffleState>((set, get) => ({
         console.log('   - content_type:', newWaffle.content_type);
         console.log('   - content_url:', newWaffle.content_url ? 'present' : 'null');
         console.log('   - caption:', newWaffle.caption);
-        console.log('   - retention_type (from DB):', newWaffle.retention_type);
-        console.log('   - created_at:', newWaffle.created_at);
-        console.log('   - expires_at:', newWaffle.expires_at);
 
         // Transform to store format
         const realMessage: WaffleMessage = {
@@ -463,8 +439,6 @@ export const useWaffleStore = create<WaffleState>((set, get) => ({
           content: messageData.content,
           caption: messageData.caption,
           createdAt: new Date(newWaffle.created_at),
-          expiresAt: newWaffle.expires_at ? new Date(newWaffle.expires_at) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-          retentionType: messageData.retentionType, // Keep original frontend format
           groupId: messageData.groupId,
           viewed: false,
           likes: 0,
@@ -478,10 +452,8 @@ export const useWaffleStore = create<WaffleState>((set, get) => ({
         console.log('   - userName:', realMessage.userName);
         console.log('   - content.type:', realMessage.content.type);
         console.log('   - caption:', realMessage.caption);
-        console.log('   - retentionType (final):', realMessage.retentionType);
         console.log('   - groupId:', realMessage.groupId);
         console.log('   - createdAt:', realMessage.createdAt);
-        console.log('   - expiresAt:', realMessage.expiresAt);
 
         // Replace optimistic with real message
         get().replaceOptimisticMessage(tempId, realMessage);
@@ -866,8 +838,6 @@ export const useWaffleStore = create<WaffleState>((set, get) => ({
           },
           caption: waffle.caption || '',
           createdAt: new Date(waffle.created_at),
-          expiresAt: waffle.expires_at ? new Date(waffle.expires_at) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-          retentionType: waffle.retention_type as 'view-once' | '7-day' | 'keep-forever',
           groupId: waffle.group_id!,
           viewed: false, // TODO: Track viewed status per user
           likes: 0, // TODO: Implement likes system
@@ -914,11 +884,6 @@ export const useWaffleStore = create<WaffleState>((set, get) => ({
       ...messageData,
       id: tempId,
       createdAt: new Date(),
-      expiresAt: messageData.retentionType === 'view-once' 
-        ? new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
-        : messageData.retentionType === '7-day'
-        ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
-        : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year for "keep forever"
       likes: 0,
       hasLiked: false,
       viewed: false,

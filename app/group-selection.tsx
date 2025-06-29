@@ -26,7 +26,7 @@ export default function GroupSelectionScreen() {
   const [isSending, setIsSending] = useState(false);
 
   const videoUri = params.videoUri as string;
-  const retentionType = (params.retentionType as 'view-once' | '7-day' | 'keep-forever') || '7-day';
+  const caption = params.caption as string;
 
   const filteredGroups = groups.filter(group =>
     group.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -50,8 +50,6 @@ export default function GroupSelectionScreen() {
     console.log('🎯 === GROUP SELECTION WAFFLE CREATION START ===');
     console.log('📹 Video URI:', videoUri);
     console.log('👤 Current User:', currentUser.name);
-    console.log('📊 Retention Type (from params):', params.retentionType);
-    console.log('📊 Retention Type (parsed):', retentionType);
     console.log('🎯 Selected Groups:', Array.from(selectedGroups));
     console.log('📊 Selected Groups Count:', selectedGroups.size);
 
@@ -80,36 +78,29 @@ export default function GroupSelectionScreen() {
           userAvatar: currentUser.avatar,
           content: {
             type: 'video' as const,
-            url: uploadResult.url, // ✅ Use uploaded URL instead of local file path
+            url: uploadResult.url,
           },
-          caption: 'Check out my waffle! 🧇',
-          retentionType: retentionType,
-          groupId: groupId,
+          caption: caption || 'Check out my waffle! 🧇',
+          groupId,
         };
 
-        console.log(`📝 Creating waffle for group ${groupId}:`);
-        console.log('   - userId:', messageData.userId);
-        console.log('   - userName:', messageData.userName);
-        console.log('   - content.type:', messageData.content.type);
-        console.log('   - content.url:', messageData.content.url ? 'present' : 'missing');
-        console.log('   - caption:', messageData.caption);
-        console.log('   - retentionType:', messageData.retentionType);
-        console.log('   - groupId:', messageData.groupId);
+        try {
+          await addMessage(messageData);
+          console.log('✅ Message created for group:', groupId);
+        } catch (error) {
+          console.error('❌ Failed to create message for group:', groupId, error);
+          throw error;
+        }
+      };
 
-        await addMessage(messageData);
-        console.log(`✅ Waffle created successfully for group ${groupId}`);
-      }
+      //await Promise.all(messagePromises);
+      console.log('✅ All messages created successfully');
 
-      console.log('✅ All waffles created successfully');
-      console.log('🎯 === GROUP SELECTION WAFFLE CREATION END ===');
-
-      // Navigate back to main screen after successful completion
+      // Navigate back to the main feed
       router.push('/(tabs)');
     } catch (error) {
-      console.error('❌ Group selection waffle creation failed:', error);
-      console.log('🎯 === GROUP SELECTION WAFFLE CREATION FAILED ===');
-      const errorMessage = error instanceof Error ? error.message : 'Failed to send waffle. Please try again.';
-      alert(errorMessage);
+      console.error('❌ Error in group selection send:', error);
+      alert('Failed to send waffle to selected groups');
     } finally {
       setIsSending(false);
     }

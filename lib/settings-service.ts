@@ -2,7 +2,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Settings interface defining all app settings
 export interface AppSettings {
-  defaultRetentionType: 'view-once' | '7-day' | 'keep-forever';
   notificationEnabled: boolean;
   notificationTimes: {
     morning: string; // "09:00"
@@ -17,7 +16,6 @@ export interface AppSettings {
 
 // Default settings
 export const DEFAULT_SETTINGS: AppSettings = {
-  defaultRetentionType: '7-day',
   notificationEnabled: true,
   notificationTimes: {
     morning: '09:00',
@@ -117,14 +115,6 @@ class SettingsService {
   }
 
   // Convenience methods for common settings
-  async getDefaultRetentionType(): Promise<'view-once' | '7-day' | 'keep-forever'> {
-    return await this.getSetting('defaultRetentionType');
-  }
-
-  async setDefaultRetentionType(type: 'view-once' | '7-day' | 'keep-forever'): Promise<boolean> {
-    return await this.updateSetting('defaultRetentionType', type);
-  }
-
   async getNotificationSettings(): Promise<{ enabled: boolean; times: { morning: string; evening: string } }> {
     const settings = await this.loadSettings();
     return {

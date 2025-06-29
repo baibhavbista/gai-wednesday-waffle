@@ -63,7 +63,6 @@ export default function CameraScreen() {
   const [showGroupDropdown, setShowGroupDropdown] = useState(false);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [caption, setCaption] = useState('');
-  const [retentionType, setRetentionType] = useState<'view-once' | '7-day' | 'keep-forever'>('7-day');
   
   // Video preview states
   const [videoUri, setVideoUri] = useState<string | null>(null);
@@ -120,21 +119,6 @@ export default function CameraScreen() {
       }
     };
     setupAudio();
-  }, []);
-
-  // Load default retention type from settings
-  useEffect(() => {
-    const loadDefaultRetentionType = async () => {
-      try {
-        const defaultType = await settingsService.getDefaultRetentionType();
-        setRetentionType(defaultType);
-        if (__DEV__) console.log('📱 Loaded default retention type:', defaultType);
-      } catch (error) {
-        if (__DEV__) console.error('❌ Failed to load default retention type:', error);
-      }
-    };
-
-    loadDefaultRetentionType();
   }, []);
 
   // Handle screen focus/blur to manage video playback
@@ -472,10 +456,8 @@ export default function CameraScreen() {
     console.log('🧇 === WAFFLE CREATION START ===');
     console.log('📹 Video URI:', videoUri);
     console.log('👤 Current User:', currentUser.name);
-    console.log('📊 Current Retention Type:', retentionType);
     console.log('🎯 Selected Group ID:', selectedGroupId);
     console.log('✍️ Caption:', caption);
-    console.log('📄 Display Text:', getRetentionDisplayText());
 
     // Stop video playback before navigating
     if (player) {
@@ -489,17 +471,12 @@ export default function CameraScreen() {
     // If no group is selected (came from bottom nav), navigate to group selection
     if (!selectedGroupId) {
       console.log('🔀 No group selected, navigating to group selection with videoUri:', videoUri);
-      console.log('🔀 Passing retention type to group selection:', retentionType);
       
-      // Note: For group selection flow, we pass the local videoUri and let the group selection 
-      // screen handle the upload when groups are selected. This avoids uploading before knowing 
-      // which groups the user wants to send to.
       router.push({
         pathname: '/group-selection',
         params: { 
           videoUri,
-          caption,
-          retentionType
+          caption
         }
       });
       return;
@@ -532,7 +509,6 @@ export default function CameraScreen() {
           url: uploadResult.url, // ✅ Use uploaded URL instead of local file path
         },
         caption: caption || 'Check out my waffle! 🧇',
-        retentionType: retentionType,
         groupId: selectedGroupId,
       };
 
@@ -542,7 +518,6 @@ export default function CameraScreen() {
       console.log('   - content.type:', messageData.content.type);
       console.log('   - content.url:', messageData.content.url ? 'present' : 'missing');
       console.log('   - caption:', messageData.caption);
-      console.log('   - retentionType:', messageData.retentionType);
       console.log('   - groupId:', messageData.groupId);
 
       // Post the waffle
@@ -591,49 +566,6 @@ export default function CameraScreen() {
   function toggleCameraFacing() {
     setFacing(current => (current === 'back' ? 'front' : 'back'));
   }
-
-  const cycleRetentionType = async () => {
-    setRetentionType(current => {
-      const newType = (() => {
-        switch (current) {
-          case 'view-once':
-            return '7-day';
-          case '7-day':
-            return 'keep-forever';
-          case 'keep-forever':
-            return 'view-once';
-          default:
-            return '7-day';
-        }
-      })();
-
-      // Save the new default to settings
-      settingsService.setDefaultRetentionType(newType).then(success => {
-        if (__DEV__) {
-          if (success) {
-            console.log('💾 Saved default retention type:', newType);
-          } else {
-            console.error('❌ Failed to save default retention type');
-          }
-        }
-      });
-
-      return newType;
-    });
-  };
-
-  const getRetentionDisplayText = () => {
-    switch (retentionType) {
-      case 'view-once':
-        return '1';
-      case '7-day':
-        return '7d';
-      case 'keep-forever':
-        return '∞';
-      default:
-        return '7d';
-    }
-  };
 
   const handleClose = () => {
     // Stop video playback before navigating
@@ -805,13 +737,6 @@ export default function CameraScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Retention Type Selector - Now an overlay */}
-      <View style={styles.retentionContainer}>
-        <TouchableOpacity style={styles.retentionButton} onPress={cycleRetentionType}>
-          <Text style={styles.retentionButtonText}>{getRetentionDisplayText()}</Text>
-        </TouchableOpacity>
-      </View>
-
       {/* Group Dropdown - Now an overlay */}
       {showGroupDropdown && (
         <View style={styles.groupDropdown}>
@@ -924,25 +849,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  retentionContainer: {
-    position: 'absolute',
-    top: 150,
-    right: 20,
-    alignItems: 'center',
-  },
-  retentionButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  retentionButtonText: {
-    fontSize: 14,
-    fontFamily: 'Inter-Bold',
-    color: '#FFFFFF',
   },
   groupSelector: {
     flexDirection: 'row',

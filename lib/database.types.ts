@@ -73,9 +73,7 @@ export interface Database {
           content_url: string | null
           content_type: 'video' | 'photo' | 'text'
           caption: string | null
-          retention_type: 'view_once' | '7_days' | 'forever'
           created_at: string
-          expires_at: string | null
           view_count: number
           ai_caption: string | null
           ai_transcript: string | null
@@ -88,9 +86,7 @@ export interface Database {
           content_url?: string | null
           content_type: 'video' | 'photo' | 'text'
           caption?: string | null
-          retention_type?: 'view_once' | '7_days' | 'forever'
           created_at?: string
-          expires_at?: string | null
           view_count?: number
           ai_caption?: string | null
           ai_transcript?: string | null
@@ -99,8 +95,6 @@ export interface Database {
         Update: {
           content_url?: string | null
           caption?: string | null
-          retention_type?: 'view_once' | '7_days' | 'forever'
-          expires_at?: string | null
           view_count?: number
           ai_caption?: string | null
           ai_transcript?: string | null

@@ -32,15 +32,6 @@ export default function WaffleCard({ waffle, onLike, onViewRecap }: WaffleCardPr
     return 'Just now';
   };
 
-  const getExpiryText = () => {
-    if (waffle.retentionType === 'view-once') return 'View once';
-    if (waffle.retentionType === 'keep-forever') return 'Saved forever';
-    
-    const now = new Date();
-    const expiresIn = Math.ceil((waffle.expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-    return `${expiresIn}d left`;
-  };
-
   return (
     <View style={styles.container}>
       {/* Header */}
@@ -51,10 +42,6 @@ export default function WaffleCard({ waffle, onLike, onViewRecap }: WaffleCardPr
             <Text style={styles.userName}>{waffle.userName}</Text>
             <Text style={styles.timeAgo}>{getTimeAgo(waffle.createdAt)}</Text>
           </View>
-        </View>
-        <View style={styles.expiryBadge}>
-          <Clock size={12} color="#9CA3AF" />
-          <Text style={styles.expiryText}>{getExpiryText()}</Text>
         </View>
       </View>
 
@@ -67,19 +54,9 @@ export default function WaffleCard({ waffle, onLike, onViewRecap }: WaffleCardPr
       ) : (
         // Media waffle layout
         <>
-          <TouchableOpacity 
-            style={styles.contentContainer}
-            onPress={() => waffle.retentionType === 'view-once' && !waffle.viewed && setShowRecap(!showRecap)}
-          >
-            {waffle.retentionType === 'view-once' && !waffle.viewed ? (
-              <View style={styles.viewOnceOverlay}>
-                <Eye size={32} color="#FFFFFF" />
-                <Text style={styles.viewOnceText}>Tap to view</Text>
-              </View>
-            ) : (
-              <Image source={{ uri: waffle.content.url || 'https://via.placeholder.com/300x200' }} style={styles.contentImage} />
-            )}
-          </TouchableOpacity>
+          <View style={styles.contentContainer}>
+            <Image source={{ uri: waffle.content.url || 'https://via.placeholder.com/300x200' }} style={styles.contentImage} />
+          </View>
 
           {/* Caption for media waffles */}
           {waffle.caption && (
@@ -177,20 +154,6 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Regular',
     color: '#9CA3AF',
   },
-  expiryBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F3F4F6',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  expiryText: {
-    fontSize: 11,
-    fontFamily: 'Inter-Medium',
-    color: '#9CA3AF',
-    marginLeft: 4,
-  },
   textContentContainer: {
     backgroundColor: '#F9FAFB',
     borderRadius: 12,
@@ -214,19 +177,6 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 200,
     resizeMode: 'cover',
-  },
-  viewOnceOverlay: {
-    width: '100%',
-    height: 200,
-    backgroundColor: '#374151',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  viewOnceText: {
-    color: '#FFFFFF',
-    fontFamily: 'Inter-Medium',
-    fontSize: 14,
-    marginTop: 8,
   },
   caption: {
     fontSize: 15,
