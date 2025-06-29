@@ -227,8 +227,11 @@ app.post(
         response_format: zodResponseFormat(Suggestions, 'suggestions'),
       });
 
-      console.log("raw caption suggestions", response.choices[0].message);
-      const suggestions = response.choices[0].message.parsed;
+      let ret = JSON.parse(response.choices[0].message.content);
+
+      console.log("raw caption suggestions", ret);
+
+    const suggestions = (ret.suggestions && ret.suggestions.length > 0) ? ret.suggestions || [];
 
       // console logs for suggestions
       console.log('Caption Suggestions:', suggestions);
@@ -542,16 +545,18 @@ app.post('/ai/convo-starter', authenticateToken, async (req, res) => {
       response_format: zodResponseFormat(Suggestions, 'suggestions'),
     });
 
-    console.log('[ConvoStarter] ✓ GPT raw raw response:', response.choices[0].message);
-    console.log('[ConvoStarter] ✓ GPT raw response:', response.choices[0].message.parsed);
 
-    const prompts = response.choices[0].message.parsed?.suggestions || [
+    let ret = JSON.parse(response.choices[0].message.content);
+    console.log('[ConvoStarter] ✓ GPT raw raw response:', response.choices[0].message.content);
+    console.log('[ConvoStarter] ✓ GPT raw response:', ret);
+
+    const suggestions = (ret.suggestions && ret.suggestions.length > 0) ? ret.suggestions || [
       "Tell us something new you're excited about!",
       'Got any mid-week adventures to share?'
     ];
 
-    console.log('[ConvoStarter] ✓ Returning prompts', prompts);
-    res.json({ prompts });
+    console.log('[ConvoStarter] ✓ Returning prompts', suggestions);
+    res.json({ suggestions });
   } catch (err) {
     console.error('[ConvoStarter] ✖ Pipeline error:', err);
     res.status(500).json({ error: 'Failed to generate prompts.' });
