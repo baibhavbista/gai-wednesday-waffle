@@ -30,120 +30,35 @@ const serviceRoleClient = createClient(process.env.SUPABASE_URL, process.env.SUP
 // Initialize Postgres pool
 console.log('Validating database connection string...');
 
-// // Parse and validate connection string
-// const validateDbUrl = (url) => {
-//   try {
-//     if (!url) {
-//       return { isValid: false, error: 'Database URL is missing' };
-//     }
-
-//     // Basic structure check
-//     if (!url.startsWith('postgresql://')) {
-//       return { isValid: false, error: 'URL must start with postgresql://' };
-//     }
-
-//     // Parse URL (mask password in logs)
-//     const maskedUrl = url.replace(/:([^:@]+)@/, ':****@');
-//     console.log('Database URL format:', maskedUrl);
-
-//     // Extract components
-//     const match = url.match(/postgresql:\/\/([^:]+):([^@]+)@([^:]+):(\d+)\/(.+)/);
-//     if (!match) {
-//       return { isValid: false, error: 'Invalid URL format' };
-//     }
-
-//     const [, user, password, host, port, database] = match;
-//     const components = {
-//       user,
-//       host,
-//       port,
-//       database,
-//       hasPassword: !!password
-//     };
-
-//     console.log('Connection components:', components);
-//     return { isValid: true, components };
-//   } catch (error) {
-//     return { isValid: false, error: error.message };
-//   }
-// };
-
-// const dbUrlValidation = validateDbUrl(process.env.SUPABASE_DB_URL);
-// if (!dbUrlValidation.isValid) {
-//   console.error('❌ Invalid database URL:', dbUrlValidation.error);
-//   console.log('Expected format: postgresql://postgres:[PASSWORD]@db.[YOUR-PROJECT-REF].supabase.co:5432/postgres');
-// } else {
-//   console.log('✅ Database URL format is valid');
-// }
-
-// // Extract host from connection string
-// const dbHost = dbUrlValidation.isValid ? dbUrlValidation.components.host : null;
-// if (!dbHost) {
-//   console.error('❌ Could not extract database host from connection string');
-// }
-
-// Create pool with explicit parameters
-// const pool = new Pool({
-//   // Don't use connectionString to avoid IPv6
-//   host: dbHost,
-//   port: dbUrlValidation.isValid ? parseInt(dbUrlValidation.components.port) : 5432,
-//   database: dbUrlValidation.isValid ? dbUrlValidation.components.database : 'postgres',
-//   user: dbUrlValidation.isValid ? dbUrlValidation.components.user : 'postgres',
-//   password: process.env.SUPABASE_DB_PASSWORD,
-//   ssl: { rejectUnauthorized: false },
-//   // Force IPv4
-//   family: 4,
-//   // Add timeouts
-//   connectionTimeoutMillis: 5000,
-//   idleTimeoutMillis: 30000,
-//   max: 20,
-// });
-
-// // Add error handler for pool
-// pool.on('error', (err) => {
-//   console.error('Unexpected error on idle client', err);
-// });
-
 let pool;
 try {
   if (!process.env.SUPABASE_DB_URL) {
     throw new Error('SUPABASE_DB_URL environment variable is not set.');
   }
 
-  // Use the URL class for robust parsing
-  const dbUrl = new URL(process.env.SUPABASE_DB_URL);
-
-  console.log('✅ Successfully parsed database URL. Connecting with these details:');
-  console.log({
-    host: dbUrl.hostname,
-    port: dbUrl.port,
-    database: dbUrl.pathname.slice(1), // removes the leading '/'
-    user: dbUrl.username,
-    ssl: true,
-    family: 4
-  });
-
+  // Let the 'pg' library handle the connection string directly.
+  // This is more robust and correctly handles authentication protocols.
   pool = new Pool({
-    host: dbUrl.hostname,
-    port: dbUrl.port,
-    database: dbUrl.pathname.slice(1),
-    user: dbUrl.username,
-    password: dbUrl.password, // The URL parser correctly extracts the password
-    ssl: { rejectUnauthorized: false }, // Keep this for Supabase
-    family: 4, // Your correct requirement to force IPv4
+    connectionString: process.env.SUPABASE_DB_URL,
+    ssl: {
+      rejectUnauthorized: false, // This is required for Supabase connections
+    },
+    // We can still add our specific overrides here
+    family: 4, // Keep forcing IPv4 to prevent DNS issues
     connectionTimeoutMillis: 5000,
     idleTimeoutMillis: 30000,
     max: 20,
   });
 
-  // Add error handler for the pool
+  // Add the error handler
   pool.on('error', (err) => {
     console.error('Unexpected error on idle client', err);
   });
 
+  console.log('✅ Database pool configured successfully.');
+
 } catch (error) {
     console.error('❌ Failed to initialize database pool:', error.message);
-    // Exit if the database can't be configured, as the app is non-functional
     process.exit(1);
 }
 
@@ -169,6 +84,48 @@ const authenticateToken = (req, res, next) => {
     next();
   });
 };
+
+const test = async () => {
+  let dbClient;
+  let waffleId="6ab57963-f545-4112-8647-e6f295544b8a";
+  let transcript={text: "1243"};
+  try {
+    console.log('Attempting database connection...');
+    dbClient = await pool.connect();
+    console.log('Successfully connected to database');
+
+    const query = 'UPDATE public.waffles SET ai_transcript = $1 WHERE id = $2 RETURNING id';
+    console.log('Executing query:', {
+      query,
+      waffleId,
+      transcriptLength: transcript.text.length
+    });
+    
+    const result = await dbClient.query(query, [transcript.text, waffleId]);
+    
+    if (result.rowCount === 0) {
+      console.warn(`No waffle found with ID ${waffleId}`);
+    } else {
+      console.log(`Successfully updated transcript for waffle ${waffleId}`);
+    }
+  } catch (dbError) {
+    console.error('Database error details:', {
+      code: dbError.code,
+      errno: dbError.errno,
+      syscall: dbError.syscall,
+      address: dbError.address,
+      port: dbError.port,
+      message: dbError.message,
+      stack: dbError.stack
+    });
+    throw dbError;
+  } finally {
+    if (dbClient) {
+      dbClient.release();
+      console.log('Database connection released');
+    }
+  }
+}
 
 // The main endpoint for generating captions.
 // It's protected by the authentication middleware.
@@ -446,4 +403,6 @@ app.post('/process-full-video', async (req, res) => {
 
 app.listen(port, () => {
   console.log(`Backend service listening on port ${port}`);
+
+  test();
 });
