@@ -1,0 +1,28 @@
+services:
+  # This is your web service for real-time caption generation
+  - type: web
+    name: waffle-app-caption-service
+    plan: free # Uses the free tier with spin-down behavior
+    runtime: native
+    env: node
+
+    # Specifies the sub-directory for this service
+    # This is the most critical setting for the monorepo structure
+    rootDir: render-backend
+
+    # This section installs FFmpeg into the native Node.js environment
+    packages:
+      - name: ffmpeg
+
+    # Specifies build and start commands relative to the Root Directory
+    buildCommand: "npm install"
+    startCommand: "npm start"
+
+    # Define environment variables to be set as secrets in the Render dashboard
+    envVars:
+      - key: SUPABASE_JWT_SECRET
+        fromSecret: true
+      - key: OPENAI_API_KEY
+        fromSecret: true
+      - key: SUPABASE_DB_URL # Full database connection string
+        fromSecret: true

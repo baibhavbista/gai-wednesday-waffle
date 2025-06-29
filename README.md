@@ -37,8 +37,10 @@
 ## 🛠 Tech Stack
 
 - **Frontend**: React Native + Expo Router, StyleSheet API, Zustand
-- **Backend**: Supabase (Auth, Postgres, Storage, Realtime, Vector/pgvector)
-- **AI**: Edge Functions → Whisper STT → Supabase Vector → GPT-4o
+- **Backend**: Hybrid model
+    - **Data Plane**: Supabase (Auth, Postgres, Storage, Realtime)
+    - **Compute Plane**: Render.com (Node.js + FFmpeg) for AI/media processing
+- **AI**: Render Service → FFmpeg → Whisper STT → GPT-4o
 - **Performance**: All AI calls return in <3s (SnapConnect success metric)
 
 ## 🚀 Current Implementation Status
@@ -103,8 +105,11 @@ wednesday-waffle/
 │   ├── storage-service.ts       # File upload/download
 │   ├── profile-service.ts       # User management
 │   └── settings-service.ts      # App preferences
+├── render-backend/              # Node.js backend for AI processing
+│   └── ...
 ├── store/                       # Zustand state management
 │   └── useWaffleStore.ts        # Main app state
+├── render.yaml                  # Infrastructure-as-Code for Render.com
 └── scripts/supabase/            # Database migrations
     ├── 01-profiles-table.sql    # User profiles
     ├── 02-groups-table.sql      # Groups & invite codes
@@ -178,13 +183,24 @@ prompts_feedback (id, prompt_text, user_reaction, created_at)
 
 ```mermaid
 graph TD
-    A[User uploads video] --> B[Supabase Storage]
-    B --> C[Edge Function: /tts]
-    C --> D[Whisper TTS]
-    D --> E[Store transcript + embeddings]
-    E --> F[Vector similarity search]
-    F --> G[GPT-4o prompt generation]
-    G --> H[Return suggestions <3s]
+    subgraph "Client App"
+        A[User records video]
+    end
+
+    subgraph "Compute (Render.com Service)"
+        C(Node.js + FFmpeg)
+    end
+
+    subgraph "Data (Supabase)"
+        D[Storage]
+        E[Database]
+    end
+
+    A -- "1. Sends 1MB chunk for captions" --> C
+    C -- "2. Returns AI captions < 5s" --> A
+    A -- "3. Uploads full video in background" --> D
+    D -- "4. Webhook triggers processing" --> C
+    C -- "5. Generates full transcript for RAG" --> E
 ```
 
 ## 📝 Development Notes
