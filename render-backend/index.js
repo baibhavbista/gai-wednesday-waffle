@@ -227,6 +227,7 @@ app.post(
         response_format: zodResponseFormat(Suggestions, 'suggestions'),
       });
 
+      console.log("raw caption suggestions", response);
       const suggestions = response.choices[0].message.parsed;
 
       // console logs for suggestions
@@ -541,6 +542,7 @@ app.post('/ai/convo-starter', authenticateToken, async (req, res) => {
       response_format: zodResponseFormat(Suggestions, 'suggestions'),
     });
 
+    console.log('[ConvoStarter] ✓ GPT raw raw response:', response);
     console.log('[ConvoStarter] ✓ GPT raw response:', response.choices[0].message.parsed);
 
     const prompts = response.choices[0].message.parsed?.suggestions || [
