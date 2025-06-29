@@ -411,6 +411,113 @@ app.post('/process-full-video', async (req, res) => {
   }
 });
 
+/* =============================
+   Prompt-Me-Please endpoint
+   ============================= */
+
+// In-memory throttle map: { `${userId}-${groupId}`: lastEpochMs }
+const convoStarterThrottle = new Map();
+const THROTTLE_WINDOW_MS = 30_000; // 30 seconds per user+group
+
+app.post('/ai/convo-starter', authenticateToken, async (req, res) => {
+  const { group_id: groupId, user_uid: userUid, limit_user = 3, limit_group = 5 } = req.body || {};
+
+  if (!groupId || !userUid) {
+    return res.status(400).json({ error: 'Missing group_id or user_uid' });
+  }
+
+  // Simple rate-limit check
+  const throttleKey = `${userUid}-${groupId}`;
+  const now = Date.now();
+  if (convoStarterThrottle.has(throttleKey) && now - convoStarterThrottle.get(throttleKey) < THROTTLE_WINDOW_MS) {
+    return res.status(429).json({ error: 'Too many requests – please wait a moment.' });
+  }
+  convoStarterThrottle.set(throttleKey, now);
+
+  let dbClient;
+  try {
+    dbClient = await pool.connect();
+
+    // 1) Verify the caller is indeed a member of the group (defence-in-depth)
+    const { rows: membershipRows } = await dbClient.query(
+      `SELECT 1 FROM public.group_members WHERE group_id = $1 AND user_id = $2 LIMIT 1`,
+      [groupId, userUid]
+    );
+    if (membershipRows.length === 0) {
+      return res.status(403).json({ error: 'User not a member of the group' });
+    }
+
+    // 2) Fetch recent transcripts: 3 from user, 5 from others in group
+    const fetchQuery = `
+      WITH user_snippets AS (
+        SELECT t.text
+        FROM public.waffles w
+        JOIN public.transcripts t ON t.content_url = w.content_url
+        WHERE w.group_id = $1 AND w.user_id = $2 AND t.text IS NOT NULL
+        ORDER BY w.created_at DESC
+        LIMIT $3
+      ),
+      others_snippets AS (
+        SELECT t.text
+        FROM public.waffles w
+        JOIN public.transcripts t ON t.content_url = w.content_url
+        WHERE w.group_id = $1 AND w.user_id <> $2 AND t.text IS NOT NULL
+        ORDER BY w.created_at DESC
+        LIMIT $4
+      )
+      SELECT text FROM user_snippets
+      UNION ALL
+      SELECT text FROM others_snippets;
+    `;
+
+    const { rows } = await dbClient.query(fetchQuery, [groupId, userUid, limit_user, limit_group]);
+
+    if (rows.length === 0) {
+      return res.status(200).json({ prompts: [
+        "What's something exciting coming up for you this week?",
+        'Share a quick highlight from today!'
+      ]});
+    }
+
+    // Concatenate snippets with truncation to keep prompt concise
+    const snippets = rows.map(r => (r.text || '').slice(0, 120));
+
+    const prompt = `You are Prompt-Me-Please, an assistant that writes playful conversation starters for a small friend group.
+A user is about to record a new waffle but seems unsure what to say. Using the recent snippets below, craft exactly 2 fun, engaging prompts that would inspire the user to share an update.
+Be sure to: 
+• Reference any ongoing activities or plans they mentioned earlier.
+• Keep each prompt ≤100 characters.
+• Return ONLY a JSON array of two strings.
+
+Recent snippets:\n${snippets.map(s => '"' + s.replace(/"/g, '') + '"').join('\n')}`;
+
+    const gptResp = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [{ role: 'system', content: prompt }],
+      temperature: 0.8,
+      max_tokens: 80,
+      response_format: { type: 'json_object' },
+    });
+
+    let prompts;
+    try {
+      prompts = JSON.parse(gptResp.choices[0].message.content);
+    } catch (_) {
+      prompts = [
+        "Tell us something new you're excited about!",
+        'Got any mid-week adventures to share?'
+      ];
+    }
+
+    res.json({ prompts });
+  } catch (err) {
+    console.error('Error in convo-starter pipeline:', err);
+    res.status(500).json({ error: 'Failed to generate prompts.' });
+  } finally {
+    if (dbClient) dbClient.release();
+  }
+});
+
 app.listen(port, () => {
   console.log(`Backend service listening on port ${port}`);
 });
