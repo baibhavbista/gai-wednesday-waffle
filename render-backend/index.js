@@ -85,54 +85,6 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
-const test = async () => {
-  let dbClient;
-  let fileName="https://jmkkhtqdauxfaicnmnlm.supabase.co/storage/v1/object/sign/waffles/36a1ff43-4d4e-4455-bbf2-f2a106a5addc/1751216874296-52w67zs26.mp4?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV81MjY2MTA5ZC0wMWEzLTRjM2YtYmY0ZS01ODk2N2MwYzZjYzgiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJ3YWZmbGVzLzM2YTFmZjQzLTRkNGUtNDQ1NS1iYmYyLWYyYTEwNmE1YWRkYy8xNzUxMjE2ODc0Mjk2LTUydzY3enMyNi5tcDQiLCJpYXQiOjE3NTEyMTY4NzgsImV4cCI6MTc1MTgyMTY3OH0.yVTbrZYGVgqNdB3W5LfAYvBYbL44BMDttqqz8d_Bqzc";
-  let transcript={text: "1243"};
-  try {
-    console.log('Attempting database connection...');
-    dbClient = await pool.connect();
-    console.log('Successfully connected to database');
-
-    const query = `
-      UPDATE public.waffles 
-      SET ai_transcript = $1 
-      WHERE content_url LIKE '%' || $2 || '%' 
-      AND content_type = 'video' 
-      RETURNING id;
-      `;
-    console.log('Executing query:', {
-      query,
-      fileName,
-      transcriptLength: transcript.text.length
-    });
-    
-    const result = await dbClient.query(query, [transcript.text, fileName]);
-    
-    if (result.rowCount === 0) {
-      console.warn(`No waffle found with fileName ${fileName}`);
-    } else {
-      console.log(`Successfully updated transcript for waffle ${fileName}`);
-    }
-  } catch (dbError) {
-    console.error('Database error details:', {
-      code: dbError.code,
-      errno: dbError.errno,
-      syscall: dbError.syscall,
-      address: dbError.address,
-      port: dbError.port,
-      message: dbError.message,
-      stack: dbError.stack
-    });
-    throw dbError;
-  } finally {
-    if (dbClient) {
-      dbClient.release();
-      console.log('Database connection released');
-    }
-  }
-}
-
 // The main endpoint for generating captions.
 // It's protected by the authentication middleware.
 // It now accepts either a 'videoChunk' or an 'audioChunk'.
@@ -415,6 +367,4 @@ app.post('/process-full-video', async (req, res) => {
 
 app.listen(port, () => {
   console.log(`Backend service listening on port ${port}`);
-
-  // test();
 });
