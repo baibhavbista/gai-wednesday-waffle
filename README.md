@@ -2,7 +2,7 @@
 
 > A tiny, private "Snap-clone lite" for friend groups who no longer share the same city.
 
-**Wednesday Waffle** recreates the feeling of "hanging out in the kitchen" through a simple weekly ritual: every Wednesday, friends drop quick video or photo updates that stay in the group thread for 7 days. No performative posting, no algorithms—just authentic moments shared with your closest people.
+**Wednesday Waffle** recreates the feeling of "hanging out in the kitchen" through a simple weekly ritual: every Wednesday, friends drop quick video updates. No performative posting, no algorithms—just authentic moments shared with your closest people.
 
 ## 🎯 The Problem We're Solving
 
@@ -15,8 +15,7 @@
 ## ✨ Core Features
 
 ### 📱 **Capture & Share**
-- Record ≤5min videos or snap photos with built-in camera
-- Choose retention: **view-once** | **7 days** (default) | **keep forever** 
+- Record ≤5min videos with built-in camera
 - Auto-downscaled to 720p for optimal performance
 
 ### 👥 **Private Groups**
@@ -40,7 +39,7 @@
 - **Backend**: Hybrid model
     - **Data Plane**: Supabase (Auth, Postgres, Storage, Realtime)
     - **Compute Plane**: Render.com (Node.js + FFmpeg) for AI/media processing
-- **AI**: Render Service → FFmpeg → Whisper STT → GPT-4o
+- **AI**: Render Service → FFmpeg → Whisper TTS → GPT-4o
 - **Performance**: All AI calls return in <3s (SnapConnect success metric)
 
 ## 🚀 Current Implementation Status
@@ -68,11 +67,11 @@
 
 ### 🎯 **User Stories (MVP)**
 1. **US-1**: Capture & post waffle *(UI complete, backend integration needed)*
-2. **US-2**: Wednesday nudger push notifications *(planned)*
-3. **US-3**: Prompt-me-please AI suggestions *(planned)*  
-4. **US-4**: Caption Genie AI captions *(planned)*
-5. **US-5**: Catch-up recap AI summaries *(planned)*
-6. **US-6**: Share across multiple groups *(stretch goal)*
+2. **US-2**: Wednesday nudger push notifications
+3. **US-3**: Prompt-me-please AI suggestions
+4. **US-4**: Caption Genie AI captions
+5. **US-5**: Catch-up recap AI summaries 
+6. **US-6**: Share across multiple groups 
 
 ## 📁 Project Structure
 

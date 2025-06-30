@@ -23,6 +23,13 @@ import ProfileSetup from '@/components/ProfileSetup';
 
 SplashScreen.preventAutoHideAsync();
 
+// FIXME: remove this. Kept for now since easier to scan QR
+if (true) {
+  console.log = () => {};
+  console.warn = () => {};
+  console.error = () => {};
+}
+
 export default function RootLayout() {
   useFrameworkReady();
   const { session, profile, loading, profileLoading, isReady, hasProfile } = useAuth();
