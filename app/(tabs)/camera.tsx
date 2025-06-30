@@ -629,11 +629,11 @@ export default function CameraScreen() {
   const handleClose = () => {
     // If we came from a specific group, go back to that group
     if (sourceGroupId) {
-      router.push(`/chat/${sourceGroupId}`);
+      router.replace(`/chat/${sourceGroupId}`);
     } 
     // Otherwise, go to the main chats page
     else {
-      router.push('/(tabs)');
+      router.replace('/(tabs)');
     }
     // Stop video playback before navigating
     if (player && showVideoPreview) {
