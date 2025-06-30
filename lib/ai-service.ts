@@ -53,8 +53,8 @@ export const getCaptionSuggestions = async (
 
     console.log('Caption suggestions:data:', data);
     // below, check if data.suggestions.captions is an array, otherwise just return an empty array 
-    if (Array.isArray(data.suggestions.captions)) {
-      return data.suggestions.captions;
+    if (Array.isArray(data.suggestions)) {
+      return data.suggestions;
     } else {
       return [];
     }
@@ -118,8 +118,8 @@ export const getCaptionSuggestionsFromAudio = async (
 
     let out;
     // below, check if data.suggestions.captions is an array, otherwise just return an empty array 
-    if (Array.isArray(data.suggestions.captions)) {
-      out =  data.suggestions.captions;
+    if (Array.isArray(data.suggestions)) {
+      out =  data.suggestions;
     } else {
       out =  [];
     }
@@ -174,8 +174,8 @@ export const getConversationStarters = async (
 
     const data = await response.json();
     console.log('Conversation starters:data:', data);
-    if (Array.isArray(data.prompts)) {
-      return data.prompts;
+    if (Array.isArray(data.suggestions)) {
+      return data.suggestions;
     }
     return [];
   } catch (error) {

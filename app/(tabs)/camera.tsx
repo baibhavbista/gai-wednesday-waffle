@@ -81,11 +81,12 @@ export default function CameraScreen() {
   // Prompt-Me-Please states
   const [starterPrompts, setStarterPrompts] = useState<string[]>([]);
   const [showStarterOverlay, setShowStarterOverlay] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const cameraRef = useRef<CameraView>(null);
   const { groups, addMessage, currentUser, currentGroupId, isLoading } = useWaffleStore();
-  const { uploadMedia, isLoading: isUploading, uploadProgress } = useMedia();
+  const { uploadMedia, isLoading: isMediaUploading, uploadProgress } = useMedia();
   const router = useRouter();
   const params = useLocalSearchParams();
   const recordingTimer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -206,7 +207,7 @@ export default function CameraScreen() {
         } catch (err) {
           console.log('Prompt-Me-Please error:', err);
         }
-      }, 10000); // 10 seconds idle
+      }, 5000); // 5 seconds idle
     }
 
     // Cleanup when dependencies change
@@ -503,18 +504,18 @@ export default function CameraScreen() {
     console.log('🎯 Selected Group ID:', selectedGroupId);
     console.log('✍️ Caption:', caption);
 
-    // Stop video playback before navigating
-    if (player) {
-      try {
-        player.replace(''); // Stop playback
-      } catch (error) {
-        console.log('Error stopping video before send:', error);
-      }
-    }
-
     // If no group is selected (came from bottom nav), navigate to group selection
     if (!selectedGroupId) {
       console.log('🔀 No group selected, navigating to group selection with videoUri:', videoUri);
+      
+      // Stop video playback before navigating
+      if (player) {
+        try {
+          player.replace(''); // Stop playback
+        } catch (error) {
+          console.log('Error stopping video before navigation:', error);
+        }
+      }
       
       router.push({
         pathname: '/group-selection',
@@ -528,6 +529,8 @@ export default function CameraScreen() {
 
     // If we have a selected group, upload video first then send
     try {
+
+      setIsSaving(true);
       console.log('📤 Starting video upload...');
       
       // Upload the video to storage
@@ -567,14 +570,26 @@ export default function CameraScreen() {
       // Post the waffle
       await addMessage(messageData);
 
+      setIsSaving(false);
+
       console.log('✅ Waffle creation completed successfully');
       console.log('🧇 === WAFFLE CREATION END ===');
 
-      Alert.alert('Success!', 'Your waffle has been shared with the group 🧇');
+      // Alert.alert('Success!', 'Your waffle has been shared with the group 🧇');
       handleClose();
     } catch (error) {
       console.error('❌ Waffle creation failed:', error);
       console.log('🧇 === WAFFLE CREATION FAILED ===');
+      
+      // Stop video playback on error
+      if (player) {
+        try {
+          player.replace(''); // Stop playback
+        } catch (playerError) {
+          console.log('Error stopping video after error:', playerError);
+        }
+      }
+      
       const errorMessage = error instanceof Error ? error.message : 'Failed to send video';
       Alert.alert('Error', errorMessage);
     }
@@ -612,6 +627,14 @@ export default function CameraScreen() {
   }
 
   const handleClose = () => {
+    // If we came from a specific group, go back to that group
+    if (sourceGroupId) {
+      router.push(`/chat/${sourceGroupId}`);
+    } 
+    // Otherwise, go to the main chats page
+    else {
+      router.push('/(tabs)');
+    }
     // Stop video playback before navigating
     if (player && showVideoPreview) {
       try {
@@ -621,14 +644,6 @@ export default function CameraScreen() {
       }
     }
 
-    // If we came from a specific group, go back to that group
-    if (sourceGroupId) {
-      router.push(`/chat/${sourceGroupId}`);
-    } 
-    // Otherwise, go to the main chats page
-    else {
-      router.push('/(tabs)');
-    }
   };
 
   // Format recording time as MM:SS
@@ -681,7 +696,7 @@ export default function CameraScreen() {
           <View style={styles.captionContainer}>
             <TextInput
               style={styles.captionInput}
-              placeholder="Add a caption..."
+              placeholder="Type a caption, or choose one below..."
               placeholderTextColor="#9CA3AF"
               value={caption}
               onChangeText={setCaption}
@@ -691,7 +706,7 @@ export default function CameraScreen() {
               <Text style={styles.captionStatusText}>🪄 Caption Genie is working...</Text>
             )}
             {captionError && (
-              <Text style={styles.captionStatusText}>😕 {captionError}</Text>
+              <Text style={styles.captionStatusText}>😕 Failed to get caption suggestions</Text>
             )}
             <View style={styles.suggestionsContainer}>
               {captionSuggestions.map((suggestion, index) => (
@@ -706,15 +721,26 @@ export default function CameraScreen() {
             </View>
           </View>
 
+          {/* Loading Overlay
+          {(isLoading || isUploading) && (
+            <View style={styles.loadingOverlay}>
+              <View style={styles.loadingContent}>
+                <Text style={styles.loadingText}>
+                  {isUploading ? `Uploading... ${Math.round(uploadProgress)}%` : 'Sending your waffle...'}
+                </Text>
+              </View>
+            </View>
+          )} */}
+
           {/* Video Preview Controls */}
           <View style={styles.videoPreviewControls}>
             <TouchableOpacity 
               style={[
                 styles.downloadButton,
-                isDownloading && styles.downloadButtonDisabled
+                (isDownloading || isLoading || isSaving) && styles.downloadButtonDisabled
               ]}
               onPress={downloadVideo}
-              disabled={isDownloading}
+              disabled={isDownloading || isLoading || isSaving}
             >
               <Download size={20} color="#FFFFFF" />
               <Text style={styles.downloadButtonText}>
@@ -725,15 +751,14 @@ export default function CameraScreen() {
             <TouchableOpacity 
               style={[
                 styles.sendButton,
-                (isUploading || isLoading) && styles.sendButtonDisabled
+                ((isLoading || isSaving)) && styles.sendButtonDisabled
               ]}
               onPress={sendVideo}
-              disabled={isUploading || isLoading}
+              disabled={(isLoading || isSaving)}
             >
               <Send size={20} color="#FFFFFF" />
               <Text style={styles.sendButtonText}>
-                {isUploading ? `Uploading... ${Math.round(uploadProgress)}%` :
-                 isLoading ? 'Sending...' :
+                {(isLoading || isSaving) ? 'Sending...' :
                  selectedGroupId ? 'Send' : 'Choose Groups'}
               </Text>
             </TouchableOpacity>
@@ -1076,7 +1101,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingTop: 60,
+    paddingTop: 20,
     paddingBottom: 20,
     backgroundColor: 'rgba(0, 0, 0, 0.3)',
   },
@@ -1204,5 +1229,28 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Inter-Regular',
     color: '#1F2937',
+  },
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  loadingContent: {
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderRadius: 16,
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+  },
+  loadingText: {
+    fontSize: 16,
+    fontFamily: 'Inter-SemiBold',
+    color: '#1F2937',
+    textAlign: 'center',
   },
 });
