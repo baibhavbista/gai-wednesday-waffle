@@ -9,7 +9,14 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.baibhavbista.wednesday-waffle-app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Wednesday Waffle needs camera access to record your video updates.",
+        "NSMicrophoneUsageDescription": "Wednesday Waffle needs microphone access to record audio for your waffles.",
+        "NSPhotoLibraryUsageDescription": "Wednesday Waffle needs access to your photos to save your waffles and let you share photos from your library.",
+        "NSPhotoLibraryAddUsageDescription": "Wednesday Waffle needs permission to save recorded videos to your photo library."
+      }
     },
     "web": {
       "bundler": "metro",
@@ -31,6 +38,9 @@
         "projectId": "b89997df-ab79-4285-be77-ff516e6a7963"
       }
     },
-    "owner": "baibhavbista"
+    "owner": "baibhavbista",
+    "android": {
+      "package": "com.baibhavbista.wednesdaywaffleapp"
+    }
   }
 }

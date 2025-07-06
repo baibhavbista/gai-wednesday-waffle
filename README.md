@@ -147,6 +147,7 @@ npm run dev
 EXPO_PUBLIC_SUPABASE_URL=your-supabase-url
 EXPO_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
 EXPO_PUBLIC_OPENAI_API_KEY=your-openai-key  # For future AI features
+EXPO_PUBLIC_CAPTION_SERVICE_URL=captions-route-for-render-backend # Needed to host on render because Supabase functions do not support using things liuke ffmpeg
 ```
 
 ## 🎨 Design Philosophy
@@ -154,7 +155,6 @@ EXPO_PUBLIC_OPENAI_API_KEY=your-openai-key  # For future AI features
 - **Authentic over performative**: Real moments, not highlight reels
 - **Simple over complex**: One action per Wednesday, no endless scrolling
 - **Private over public**: Your closest friends, not the whole internet
-- **Ephemeral by default**: Memories that naturally fade (unless you choose otherwise)
 
 ## 🗂 Database Schema (Implemented)
 
@@ -220,7 +220,7 @@ graph TD
 
 ## 🚧 Next Steps
 
-1. **AI Implementation**: Build Edge Functions for STT and RAG
+1. **AI Implementation**: Build Edge Functions for TTS and RAG
 2. **Push Notifications**: Implement Wednesday nudger system
 3. **Testing & Polish**: Ensure <3s AI response times
 4. **Demo Preparation**: Record walkthrough video
