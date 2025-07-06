@@ -54,6 +54,50 @@ Generates conversation prompts based on recent group activity
 - **Input**: `{ group_id, user_uid }`
 - **Output**: `{ suggestions: string[] }`
 
+### `POST /api/search/waffles` (Protected)
+Semantic search across waffle transcripts
+- **Auth**: Bearer token (Supabase JWT)
+- **Input**: 
+  ```json
+  {
+    "query": "Josh's new job",
+    "filters": {
+      "groupIds": ["uuid1", "uuid2"],
+      "userIds": ["uuid3"],
+      "dateRange": { "start": "2024-01-01", "end": "2024-02-01" },
+      "mediaType": "video" | "photo" | "all"
+    },
+    "limit": 10,
+    "offset": 0
+  }
+  ```
+- **Output**: 
+  ```json
+  {
+    "results": [{
+      "id": "waffle-id",
+      "userName": "Josh M.",
+      "groupName": "Work Friends",
+      "transcript": "Full transcript text...",
+      "matchStart": 42,
+      "matchEnd": 67,
+      "timestamp": 135,
+      "videoDuration": 270,
+      "createdAt": "2024-01-15T10:30:00Z",
+      "matchPositions": [135, 203]
+    }],
+    "totalCount": 25,
+    "suggestions": ["Josh's new job in Work Friends"],
+    "processingStatus": "complete"
+  }
+  ```
+- **Features**:
+  - Embedding-based semantic search using pgvector
+  - Temporal query understanding ("last week", "yesterday")
+  - Permission-aware (only searches groups user is member of)
+  - Sentence-level match highlighting
+  - Result caching for performance
+
 ## 🚀 Setup
 
 ```bash
@@ -108,6 +152,7 @@ User App → Supabase Auth → Render Backend → OpenAI APIs
 1. **Caption Generation**: Audio chunk → FFmpeg → Whisper → Embeddings → Fetch user's last 5 captions (group-filtered) → RAG lookup (group-aware) → GPT-4o → 3 captions
 2. **Full Processing**: Video upload → Webhook → Download → Transcribe → Embed → Store with AI recap
 3. **Conversation Starters**: Fetch recent transcripts → GPT-4o → 2 contextual prompts
+4. **Search**: Query → Parse temporal → Generate embedding → Vector similarity search → Find match positions → Return highlighted results
 
 ## 📝 Notes
 

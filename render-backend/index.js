@@ -629,6 +629,345 @@ app.post('/ai/convo-starter', authenticateToken, async (req, res) => {
   }
 });
 
+/* =============================
+   Search endpoint
+   ============================= */
+
+// Simple in-memory cache for query embeddings
+const searchCache = new Map();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+// Clean up old cache entries every minute
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of searchCache.entries()) {
+    if (now - value.timestamp > CACHE_TTL) {
+      searchCache.delete(key);
+    }
+  }
+}, 60 * 1000);
+
+// Helper: Calculate cosine similarity between two vectors
+function cosineSimilarity(vecA, vecB) {
+  let dotProduct = 0;
+  let normA = 0;
+  let normB = 0;
+  
+  for (let i = 0; i < vecA.length; i++) {
+    dotProduct += vecA[i] * vecB[i];
+    normA += vecA[i] * vecA[i];
+    normB += vecB[i] * vecB[i];
+  }
+  
+  return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+
+// Helper: Parse temporal queries
+function parseTemporalQuery(query) {
+  const patterns = {
+    'last week': { days: 7 },
+    'yesterday': { days: 1 },
+    'this week': { days: 7 },
+    'this month': { days: 30 },
+    'last month': { days: 60, offset: 30 }
+  };
+  
+  let cleanQuery = query;
+  let dateFilter = null;
+  
+  for (const [pattern, range] of Object.entries(patterns)) {
+    if (query.toLowerCase().includes(pattern)) {
+      cleanQuery = query.replace(new RegExp(pattern, 'gi'), '').trim();
+      
+      const endDate = new Date();
+      if (range.offset) {
+        endDate.setDate(endDate.getDate() - range.offset);
+      }
+      
+      const startDate = new Date(endDate);
+      startDate.setDate(startDate.getDate() - range.days);
+      
+      dateFilter = { start: startDate, end: endDate };
+      break;
+    }
+  }
+  
+  return { cleanQuery, dateFilter };
+}
+
+// Helper: Find match positions in transcript
+async function findMatchPositions(transcript, queryEmbedding) {
+  try {
+    // Split transcript into sentences
+    const sentences = transcript.match(/[^.!?]+[.!?]+/g) || [transcript];
+    
+    // For performance, only process first 10 sentences
+    const sentencesToProcess = sentences.slice(0, 10);
+    
+    // Generate embeddings for sentences
+    const embeddingResponse = await openai.embeddings.create({
+      model: 'text-embedding-3-small',
+      input: sentencesToProcess,
+    });
+    
+    // Calculate similarities
+    const matches = sentencesToProcess.map((sentence, idx) => {
+      const similarity = cosineSimilarity(
+        queryEmbedding,
+        embeddingResponse.data[idx].embedding
+      );
+      
+      const position = transcript.indexOf(sentence);
+      
+      return {
+        sentence: sentence.trim(),
+        similarity,
+        position,
+        timestamp: Math.floor((position / transcript.length) * 180) // Rough estimate
+      };
+    });
+    
+    // Return matches above threshold, sorted by similarity
+    return matches
+      .filter(m => m.similarity > 0.7)
+      .sort((a, b) => b.similarity - a.similarity)
+      .slice(0, 3)
+      .map(m => ({
+        position: m.position,
+        length: m.sentence.length,
+        timestamp: m.timestamp
+      }));
+  } catch (error) {
+    console.error('Error finding match positions:', error);
+    // Return a default match at the beginning
+    return [{
+      position: 0,
+      length: Math.min(100, transcript.length),
+      timestamp: 0
+    }];
+  }
+}
+
+// Main search endpoint
+app.post('/api/search/waffles', authenticateToken, async (req, res) => {
+  const { 
+    query, 
+    filters = {}, 
+    limit = 10, 
+    offset = 0 
+  } = req.body;
+  
+  console.log('[Search] Request:', { query, filters, limit, offset });
+  
+  // Validate request
+  if (!query || query.trim().length < 2) {
+    return res.status(400).json({ 
+      error: 'Query must be at least 2 characters' 
+    });
+  }
+  
+  const userId = req.user.sub;
+  let dbClient;
+  
+  try {
+    // Parse temporal queries
+    const { cleanQuery, dateFilter } = parseTemporalQuery(query);
+    console.log('[Search] Parsed query:', { cleanQuery, dateFilter });
+    
+    // Check cache for embedding
+    const cacheKey = `embed:${cleanQuery}`;
+    let queryEmbedding;
+    
+    if (searchCache.has(cacheKey)) {
+      queryEmbedding = searchCache.get(cacheKey).embedding;
+      console.log('[Search] Using cached embedding');
+    } else {
+      // Generate embedding for search query
+      console.log('[Search] Generating new embedding');
+      const embeddingResponse = await openai.embeddings.create({
+        model: 'text-embedding-3-small',
+        input: cleanQuery,
+      });
+      
+      queryEmbedding = embeddingResponse.data[0].embedding;
+      searchCache.set(cacheKey, {
+        embedding: queryEmbedding,
+        timestamp: Date.now()
+      });
+    }
+    
+    // Convert embedding to pgvector format
+    const embeddingLiteral = '[' + queryEmbedding.join(',') + ']';
+    
+    // Connect to database
+    dbClient = await pool.connect();
+    
+    // Build filters
+    const filterConditions = [];
+    const params = [userId, embeddingLiteral, limit, offset];
+    let paramIndex = 5;
+    
+    if (filters.groupIds?.length > 0) {
+      filterConditions.push(`w.group_id = ANY($${paramIndex})`);
+      params.push(filters.groupIds);
+      paramIndex++;
+    }
+    
+    if (filters.userIds?.length > 0) {
+      filterConditions.push(`w.user_id = ANY($${paramIndex})`);
+      params.push(filters.userIds);
+      paramIndex++;
+    }
+    
+    if (dateFilter || filters.dateRange) {
+      const range = dateFilter || filters.dateRange;
+      if (range.start) {
+        filterConditions.push(`w.created_at >= $${paramIndex}`);
+        params.push(range.start);
+        paramIndex++;
+      }
+      if (range.end) {
+        filterConditions.push(`w.created_at <= $${paramIndex}`);
+        params.push(range.end);
+        paramIndex++;
+      }
+    }
+    
+    if (filters.mediaType && filters.mediaType !== 'all') {
+      filterConditions.push(`w.content_type = $${paramIndex}`);
+      params.push(filters.mediaType);
+      paramIndex++;
+    }
+    
+    const whereClause = filterConditions.length > 0 
+      ? 'AND ' + filterConditions.join(' AND ')
+      : '';
+    
+    // Search query with filters and permissions
+    const searchQuery = `
+      WITH filtered_waffles AS (
+        SELECT DISTINCT w.id, w.content_url, w.user_id, w.group_id, 
+               w.caption, w.created_at, w.content_type
+        FROM public.waffles w
+        JOIN public.group_members gm ON gm.group_id = w.group_id
+        WHERE gm.user_id = $1
+          ${whereClause}
+      ),
+      ranked_results AS (
+        SELECT 
+          t.content_url,
+          t.text as transcript,
+          t.embedding <=> $2::vector as distance,
+          w.*,
+          p.name as user_name,
+          p.avatar_url as user_avatar,
+          g.name as group_name
+        FROM public.transcripts t
+        JOIN filtered_waffles w ON w.content_url = t.content_url
+        JOIN public.profiles p ON p.id = w.user_id
+        JOIN public.groups g ON g.id = w.group_id
+        WHERE t.embedding IS NOT NULL
+          AND t.text IS NOT NULL
+        ORDER BY distance
+        LIMIT $3 OFFSET $4
+      )
+      SELECT * FROM ranked_results;
+    `;
+    
+    console.log('[Search] Executing search query');
+    const { rows: results } = await dbClient.query(searchQuery, params);
+    
+    console.log(`[Search] Found ${results.length} results`);
+    
+    // Get total count for pagination
+    const countQuery = `
+      SELECT COUNT(DISTINCT w.id) as total
+      FROM public.waffles w
+      JOIN public.group_members gm ON gm.group_id = w.group_id
+      JOIN public.transcripts t ON t.content_url = w.content_url
+      WHERE gm.user_id = $1
+        AND t.embedding IS NOT NULL
+        ${whereClause}
+    `;
+    
+    const countParams = params.slice(0, -2); // Remove limit and offset
+    const { rows: countResult } = await dbClient.query(countQuery, countParams);
+    const totalCount = parseInt(countResult[0].total);
+    
+    // Enhance results with match positions
+    const enhancedResults = await Promise.all(
+      results.map(async (result) => {
+        // Find match positions in transcript
+        const matches = await findMatchPositions(result.transcript, queryEmbedding);
+        
+        // Get the best match for highlighting
+        const bestMatch = matches[0] || { position: 0, length: 100, timestamp: 0 };
+        
+        // Generate thumbnail URL (mock for now)
+        const thumbnailUrl = `https://picsum.photos/seed/${result.id}/400/240`;
+        
+        // Estimate video duration (mock - in production, get from storage metadata)
+        const videoDuration = 180 + Math.floor(Math.random() * 120); // 3-5 minutes
+        
+        return {
+          id: result.id,
+          userId: result.user_id,
+          userName: result.user_name,
+          userAvatar: result.user_avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(result.user_name)}`,
+          groupName: result.group_name,
+          groupId: result.group_id,
+          videoUrl: result.content_url,
+          thumbnailUrl,
+          transcript: result.transcript,
+          matchStart: bestMatch.position,
+          matchEnd: bestMatch.position + bestMatch.length,
+          timestamp: bestMatch.timestamp,
+          videoDuration,
+          createdAt: result.created_at,
+          matchPositions: matches.map(m => m.timestamp),
+        };
+      })
+    );
+    
+    // Generate search suggestions (simple implementation)
+    const suggestions = [];
+    if (results.length > 0) {
+      // Suggest searches based on groups in results
+      const uniqueGroups = [...new Set(results.map(r => r.group_name))];
+      suggestions.push(...uniqueGroups.map(g => `${cleanQuery} in ${g}`));
+    }
+    
+    // Log search to history
+    try {
+      await dbClient.query(
+        `INSERT INTO public.search_history (user_id, query, results_count, filters)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT DO NOTHING`,
+        [userId, query, results.length, JSON.stringify(filters)]
+      );
+    } catch (err) {
+      console.error('[Search] Failed to log search history:', err);
+    }
+    
+    // Send response
+    res.json({
+      results: enhancedResults,
+      totalCount,
+      suggestions: suggestions.slice(0, 3),
+      processingStatus: 'complete'
+    });
+    
+  } catch (error) {
+    console.error('[Search] Error:', error);
+    res.status(500).json({ 
+      error: 'Search failed. Please try again.',
+      details: error.message 
+    });
+  } finally {
+    if (dbClient) dbClient.release();
+  }
+});
+
 app.listen(port, () => {
   console.log(`Backend service listening on port ${port}`);
 });
