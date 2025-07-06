@@ -1438,17 +1438,21 @@ app.get('/api/catchup/:groupId', authenticateToken, async (req, res) => {
     // Create prompt for GPT-4o
     const prompt = `You are a friendly assistant helping someone catch up on their friend group's activity. 
     
-Based on the following video updates (waffles) from the last ${validDays} days, create a warm, conversational summary that highlights the key moments and overall mood of the group.
+Based on the following video updates (waffles) from the last ${validDays} days, create a warm, conversational summary that helps them feel connected to what they've missed.
 
-Keep it to 2-3 sentences that capture the essence of what's been happening. Focus on:
-- Who's been active
-- Key activities or moments shared
-- The general vibe/mood of the group
+Write a summary that's about 4-6 sentences (or 1-2 short paragraphs). Include:
+- Who's been most active and what they've been sharing
+- Key moments, activities, or themes from the week
+- Any particularly interesting or memorable updates
+- The overall mood and energy of the group
+- Specific details that make it feel personal (mention names, activities, etc.)
+
+Make it conversational, like a friend filling them in on what they missed. Use names frequently and reference specific moments when possible.
 
 Waffles:
 ${formattedEntries.join('\n')}
 
-Write a friendly catch-up summary:`;
+Write a friendly, detailed catch-up summary:`;
 
     console.log('[CatchUp] Sending to GPT-4o for summarization');
     
@@ -1457,7 +1461,7 @@ Write a friendly catch-up summary:`;
       model: 'gpt-4o',
       messages: [{ role: 'system', content: prompt }],
       temperature: 0.7,
-      max_tokens: 150,
+      max_tokens: 300,
     });
     
     const summary = completion.choices[0]?.message?.content?.trim() || 'Unable to generate summary';
