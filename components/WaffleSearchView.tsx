@@ -112,16 +112,22 @@ export default function WaffleSearchView({ visible, onClose, groupId }: WaffleSe
     }
   };
 
-  const handleSearch = async () => {
-    if (!searchQuery.trim()) return;
+  const handleSearch = async (queryOverride?: string) => {
+    const query = queryOverride || searchQuery;
+    if (!query.trim()) return;
 
     setIsSearching(true);
-    console.log('[WaffleSearchView] Starting search for:', searchQuery);
+    console.log('[WaffleSearchView] Starting search for:', query);
+    
+    // Update the search query if override provided
+    if (queryOverride) {
+      setSearchQuery(queryOverride);
+    }
     
     try {
       // Build search request with filters
       const searchRequest = {
-        query: searchQuery,
+        query: query,
         filters: {
           groupIds: groupId ? [groupId] : searchFilters.groupIds,
           userIds: searchFilters.userIds,
@@ -138,7 +144,7 @@ export default function WaffleSearchView({ visible, onClose, groupId }: WaffleSe
       console.log('[WaffleSearchView] Search request:', JSON.stringify(searchRequest, null, 2));
 
       const response = await searchService.searchWaffles(searchRequest);
-      console.log('[WaffleSearchView] Search response:', response);
+      // console.log('[WaffleSearchView] Search response:', response);
       
       setSearchResults(response.results);
       
@@ -175,7 +181,7 @@ export default function WaffleSearchView({ visible, onClose, groupId }: WaffleSe
       
       // Add to recent searches
       setRecentSearches(prev => {
-        const updated = [searchQuery, ...prev.filter(q => q !== searchQuery)].slice(0, 5);
+        const updated = [query, ...prev.filter(q => q !== query)].slice(0, 5);
         return updated;
       });
     } catch (error) {
@@ -197,8 +203,7 @@ export default function WaffleSearchView({ visible, onClose, groupId }: WaffleSe
   };
 
   const handleRecentSearch = (query: string) => {
-    setSearchQuery(query);
-    setTimeout(() => handleSearch(), 100);
+    handleSearch(query);
   };
 
   const clearSearch = () => {
@@ -321,7 +326,7 @@ export default function WaffleSearchView({ visible, onClose, groupId }: WaffleSe
                 placeholderTextColor="#9CA3AF"
                 value={searchQuery}
                 onChangeText={setSearchQuery}
-                onSubmitEditing={handleSearch}
+                onSubmitEditing={() => handleSearch()}
                 returnKeyType="search"
                 autoCorrect={false}
               />
@@ -374,11 +379,6 @@ export default function WaffleSearchView({ visible, onClose, groupId }: WaffleSe
               <SearchResultCard
                 result={item}
                 searchQuery={searchQuery}
-                onPress={() => {
-                  // Navigate to chat with video
-                  console.log('Navigate to video:', item.videoUrl);
-                  // TODO: Implement navigation to video player
-                }}
               />
             )}
             contentContainerStyle={styles.listContent}

@@ -112,7 +112,7 @@ class SearchService {
       
       // Get response text first to debug
       const responseText = await response.text();
-      console.log('[SearchService] Raw response text:', responseText);
+      // console.log('[SearchService] Raw response text:', responseText);
 
       if (!response.ok) {
         console.error('[SearchService] Response not OK:', {
@@ -137,7 +137,7 @@ class SearchService {
       let data;
       try {
         data = JSON.parse(responseText);
-        console.log('[SearchService] Parsed response data:', data);
+        // console.log('[SearchService] Parsed response data:', data);
       } catch (parseError) {
         console.error('[SearchService] Failed to parse successful response as JSON:', parseError);
         console.error('[SearchService] Response text that failed to parse:', responseText);
