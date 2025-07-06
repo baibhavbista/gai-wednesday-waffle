@@ -298,7 +298,7 @@ export default function ChatScreen() {
           userId={currentUser?.id || ''}
           onNeedIdeasPress={handleNeedIdeasPress}
           onFindPress={handleFindPress}
-          visible={showAIPills && !isLoading && groupMessages.length > 0}
+          visible={showAIPills && (groupMessages.length > 0 || !!group.lastMessage)}
         />
 
         {/* Input Bar */}

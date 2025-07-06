@@ -203,6 +203,7 @@ export default function WaffleSearchView({ visible, onClose, groupId }: WaffleSe
   };
 
   const handleRecentSearch = (query: string) => {
+    setSearchQuery(query);
     handleSearch(query);
   };
 
@@ -227,9 +228,9 @@ export default function WaffleSearchView({ visible, onClose, groupId }: WaffleSe
     }
   };
 
-  // Calculate active filter count
+  // Calculate active filter count (including implicit group filter)
   const activeFilterCount = 
-    searchFilters.groupIds.length +
+    (groupId ? 1 : searchFilters.groupIds.length) +
     searchFilters.userIds.length +
     (searchFilters.dateRange.start ? 1 : 0) +
     (searchFilters.mediaType !== 'all' ? 1 : 0);
@@ -395,6 +396,7 @@ export default function WaffleSearchView({ visible, onClose, groupId }: WaffleSe
           groupMembers={allMembers}
           onClose={() => setShowFilters(false)}
           onApply={handleApplyFilters}
+          implicitGroupId={groupId}
         />
       )}
     </Modal>

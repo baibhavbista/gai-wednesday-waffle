@@ -762,6 +762,11 @@ app.post('/ai/convo-starter', authenticateToken, async (req, res) => {
    Search endpoint
    ============================= */
 
+// Search configuration
+const DEFAULT_SIMILARITY_THRESHOLD = 0.8; // Distance threshold (0 = identical, 2 = opposite for cosine)
+const MIN_SIMILARITY_THRESHOLD = 0.3; // Don't allow searches that are too broad
+const MAX_SIMILARITY_THRESHOLD = 1.5; // Don't allow searches that are too restrictive
+
 // Simple in-memory cache for query embeddings
 const searchCache = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
@@ -899,10 +904,11 @@ app.post('/api/search/waffles', authenticateToken, async (req, res) => {
     query, 
     filters = {}, 
     limit = 10, 
-    offset = 0 
+    offset = 0,
+    similarityThreshold = DEFAULT_SIMILARITY_THRESHOLD  // Default threshold, can be overridden by client
   } = req.body;
   
-  console.log('[Search] Request body:', JSON.stringify({ query, filters, limit, offset }, null, 2));
+  console.log('[Search] Request body:', JSON.stringify({ query, filters, limit, offset, similarityThreshold }, null, 2));
   
   // Validate request
   if (!query || query.trim().length < 2) {
@@ -910,6 +916,15 @@ app.post('/api/search/waffles', authenticateToken, async (req, res) => {
     return res.status(400).json({ 
       error: 'Query must be at least 2 characters' 
     });
+  }
+  
+  // Validate and clamp similarity threshold
+  const validThreshold = Math.max(
+    MIN_SIMILARITY_THRESHOLD, 
+    Math.min(MAX_SIMILARITY_THRESHOLD, similarityThreshold)
+  );
+  if (validThreshold !== similarityThreshold) {
+    console.log(`[Search] Adjusted similarity threshold from ${similarityThreshold} to ${validThreshold}`);
   }
   
   const userId = req.user.sub;
@@ -960,29 +975,29 @@ app.post('/api/search/waffles', authenticateToken, async (req, res) => {
     dbClient = await pool.connect();
     console.log('[Search] Database connected');
     
-    // Diagnostic: Check what columns exist in waffles table
-    try {
-      const { rows: columnCheck } = await dbClient.query(`
-        SELECT column_name 
-        FROM information_schema.columns 
-        WHERE table_schema = 'public' 
-        AND table_name = 'waffles' 
-        AND column_name IN ('thumbnail_url', 'duration_seconds')
-      `);
-      console.log('[Search] Available columns in waffles table:', columnCheck.map(r => r.column_name));
+    // // Diagnostic: Check what columns exist in waffles table
+    // try {
+    //   const { rows: columnCheck } = await dbClient.query(`
+    //     SELECT column_name 
+    //     FROM information_schema.columns 
+    //     WHERE table_schema = 'public' 
+    //     AND table_name = 'waffles' 
+    //     AND column_name IN ('thumbnail_url', 'duration_seconds')
+    //   `);
+    //   console.log('[Search] Available columns in waffles table:', columnCheck.map(r => r.column_name));
       
-      if (columnCheck.length === 0) {
-        console.warn('[Search] WARNING: thumbnail_url and duration_seconds columns NOT FOUND in waffles table!');
-        console.warn('[Search] This suggests the migration was not run on this database.');
-      }
-    } catch (diagError) {
-      console.error('[Search] Diagnostic query failed:', diagError);
-    }
+    //   if (columnCheck.length === 0) {
+    //     console.warn('[Search] WARNING: thumbnail_url and duration_seconds columns NOT FOUND in waffles table!');
+    //     console.warn('[Search] This suggests the migration was not run on this database.');
+    //   }
+    // } catch (diagError) {
+    //   console.error('[Search] Diagnostic query failed:', diagError);
+    // }
     
     // Build filters
     const filterConditions = [];
-    const params = [userId, embeddingLiteral, limit, offset];
-    let paramIndex = 5;
+    const params = [userId, embeddingLiteral, limit, offset, validThreshold];
+    let paramIndex = 6;
     
     console.log('[Search] Building filters...');
     
@@ -1060,6 +1075,7 @@ app.post('/api/search/waffles', authenticateToken, async (req, res) => {
         JOIN public.groups g ON g.id = w.group_id
         WHERE t.embedding IS NOT NULL
           AND t.text IS NOT NULL
+          AND t.embedding <=> $2::vector < $5  -- Only return results with distance < threshold
         ORDER BY distance
         LIMIT $3 OFFSET $4
       )
@@ -1073,6 +1089,7 @@ app.post('/api/search/waffles', authenticateToken, async (req, res) => {
       const queryResult = await dbClient.query(searchQuery, params);
       results = queryResult.rows;
       console.log(`[Search] Query executed successfully, found ${results.length} results`);
+      console.log(`[Search] Using similarity threshold: ${validThreshold}`);
       
       if (results.length > 0) {
         console.log('[Search] First result sample:', {
@@ -1080,6 +1097,14 @@ app.post('/api/search/waffles', authenticateToken, async (req, res) => {
           user_name: results[0].user_name,
           group_name: results[0].group_name,
           distance: results[0].distance,
+        });
+        
+        // Log distance distribution
+        const distances = results.map(r => r.distance);
+        console.log('[Search] Distance distribution:', {
+          min: Math.min(...distances),
+          max: Math.max(...distances),
+          avg: distances.reduce((a, b) => a + b, 0) / distances.length,
         });
       }
     } catch (queryError) {
@@ -1094,8 +1119,8 @@ app.post('/api/search/waffles', authenticateToken, async (req, res) => {
     
     // Get total count for pagination - rebuild filter conditions with new param indices
     const countFilterConditions = [];
-    const countParams = [userId];
-    let countParamIndex = 2;
+    const countParams = [userId, embeddingLiteral, validThreshold];
+    let countParamIndex = 4;
     
     if (filters.groupIds?.length > 0) {
       countFilterConditions.push(`w.group_id = ANY($${countParamIndex})`);
@@ -1140,6 +1165,7 @@ app.post('/api/search/waffles', authenticateToken, async (req, res) => {
       JOIN public.transcripts t ON t.content_url = w.content_url
       WHERE gm.user_id = $1
         AND t.embedding IS NOT NULL
+        AND t.embedding <=> $2::vector < $3  -- Match the threshold from main query
         ${countWhereClause}
     `;
     
@@ -1207,18 +1233,24 @@ app.post('/api/search/waffles', authenticateToken, async (req, res) => {
     // Generate a unique search ID
     const searchId = `search-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
+    // If no results due to threshold, include that info
+    const processingStatus = enhancedResults.length === 0 && totalCount === 0 
+      ? 'no_relevant_results' 
+      : 'complete';
+    
     // Send immediate response with a pending AI answer
     res.json({
       results: enhancedResults,
       totalCount,
       suggestions: suggestions.slice(0, 3),
-      processingStatus: 'complete',
+      processingStatus,
       searchId, // Include search ID for SSE connection
-      aiAnswer: {
-        status: 'pending',
-        text: null
-      }
-    });
+              aiAnswer: {
+          status: 'pending',
+          text: null
+        },
+        similarityThreshold: validThreshold // Include threshold in response for transparency
+      });
     
     // Register AI answer task
     const taskKey = `${userId}:${searchId}`;

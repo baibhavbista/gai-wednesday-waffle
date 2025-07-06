@@ -28,9 +28,10 @@ interface SearchFiltersProps {
   groupMembers: User[];
   onClose: () => void;
   onApply: () => void;
+  implicitGroupId?: string;
 }
 
-export function SearchFilters({ groups, groupMembers, onClose, onApply }: SearchFiltersProps) {
+export function SearchFilters({ groups, groupMembers, onClose, onApply, implicitGroupId }: SearchFiltersProps) {
   const { searchFilters, setSearchFilters } = useWaffleStore();
   const [localFilters, setLocalFilters] = useState(searchFilters);
   const [showStartDatePicker, setShowStartDatePicker] = useState(false);
@@ -89,6 +90,7 @@ export function SearchFilters({ groups, groupMembers, onClose, onApply }: Search
   };
 
   const activeFilterCount = 
+    (implicitGroupId ? 1 : 0) +
     localFilters.groupIds.length +
     localFilters.userIds.length +
     (localFilters.dateRange.start ? 1 : 0);
@@ -167,25 +169,38 @@ export function SearchFilters({ groups, groupMembers, onClose, onApply }: Search
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Groups</Text>
             <View style={styles.chipContainer}>
-              {groups.map((group) => (
-                <TouchableOpacity
-                  key={group.id}
-                  style={[
-                    styles.chip,
-                    localFilters.groupIds.includes(group.id) && styles.chipActive,
-                  ]}
-                  onPress={() => handleGroupToggle(group.id)}
+              {/* Show implicit group filter as locked if present */}
+              {implicitGroupId && groups.find(g => g.id === implicitGroupId) && (
+                <View
+                  style={[styles.chip, styles.chipLocked]}
                 >
-                  <Text
-                    style={[
-                      styles.chipText,
-                      localFilters.groupIds.includes(group.id) && styles.chipTextActive,
-                    ]}
-                  >
-                    {group.name}
+                  <Text style={[styles.chipText, styles.chipTextActive]}>
+                    {groups.find(g => g.id === implicitGroupId)?.name} (current)
                   </Text>
-                </TouchableOpacity>
-              ))}
+                </View>
+              )}
+              {/* Show other groups */}
+              {groups
+                .filter(group => group.id !== implicitGroupId) // Don't show implicit group in regular list
+                .map((group) => (
+                  <TouchableOpacity
+                    key={group.id}
+                    style={[
+                      styles.chip,
+                      localFilters.groupIds.includes(group.id) && styles.chipActive,
+                    ]}
+                    onPress={() => handleGroupToggle(group.id)}
+                  >
+                    <Text
+                      style={[
+                        styles.chipText,
+                        localFilters.groupIds.includes(group.id) && styles.chipTextActive,
+                      ]}
+                    >
+                      {group.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
             </View>
           </View>
 
@@ -312,6 +327,11 @@ const styles = StyleSheet.create({
   chipActive: {
     backgroundColor: '#FFD93D',
     borderColor: '#FFD93D',
+  },
+  chipLocked: {
+    backgroundColor: '#FFD93D',
+    borderColor: '#FFD93D',
+    opacity: 0.8,
   },
   chipText: {
     fontSize: 14,
