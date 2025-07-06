@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,13 +14,23 @@ import { useWaffleStore } from '@/store/useWaffleStore';
 import { useAuth } from '@/hooks/useAuth';
 import { Settings, Bell, Shield, CircleHelp as HelpCircle, LogOut, ChevronRight, User, Camera } from 'lucide-react-native';
 import { wafflesService } from '@/lib/database-service';
+import { ProfileService } from '@/lib/profile-service';
+import { NotificationService } from '@/lib/notification-service';
 
 export default function ProfileScreen() {
   const { currentUser, groups, isLoading } = useWaffleStore();
-  const { signOut, isReady } = useAuth();
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const { signOut, isReady, profile } = useAuth();
+  const [notificationsEnabled, setNotificationsEnabled] = useState(profile?.notifications_enabled ?? true);
   const [signingOut, setSigningOut] = useState(false);
   const [totalWaffles, setTotalWaffles] = useState<number | null>(null);
+  const [updatingNotifications, setUpdatingNotifications] = useState(false);
+
+  // Update notification state when profile changes
+  useEffect(() => {
+    if (profile) {
+      setNotificationsEnabled(profile.notifications_enabled ?? true);
+    }
+  }, [profile]);
 
   // Fetch total waffles shared by the user
   React.useEffect(() => {
@@ -41,6 +51,56 @@ export default function ProfileScreen() {
     };
   }, [currentUser]);
 
+  // Handle notification toggle
+  const handleNotificationToggle = async (value: boolean) => {
+    if (!currentUser || updatingNotifications) return;
+
+    setUpdatingNotifications(true);
+    setNotificationsEnabled(value);
+
+    try {
+      // Update profile in database
+      await ProfileService.updateProfile(currentUser.id, {
+        notifications_enabled: value,
+      });
+
+      // Update notification scheduling
+      if (value) {
+        // Check permissions first
+        const hasPermission = await NotificationService.getPermissionStatus();
+        if (hasPermission !== 'granted') {
+          const granted = await NotificationService.requestPermissions();
+          if (!granted) {
+            // Revert toggle if permission denied
+            setNotificationsEnabled(false);
+            await ProfileService.updateProfile(currentUser.id, {
+              notifications_enabled: false,
+            });
+            Alert.alert(
+              'Permission Required',
+              'Please enable notifications in your device settings to receive Wednesday nudges.'
+            );
+            return;
+          }
+        }
+        // Schedule notifications
+        await NotificationService.scheduleWeeklyNudges();
+        console.log('✅ Notifications enabled and scheduled');
+      } else {
+        // Clear all notifications
+        await NotificationService.clearAllNotifications();
+        console.log('✅ Notifications disabled and cleared');
+      }
+    } catch (error) {
+      console.error('Failed to update notification settings:', error);
+      // Revert on error
+      setNotificationsEnabled(!value);
+      Alert.alert('Error', 'Failed to update notification settings. Please try again.');
+    } finally {
+      setUpdatingNotifications(false);
+    }
+  };
+
   // Calculate unique friends across all groups (exclude duplicates and current user)
   const uniqueFriendIds = React.useMemo(() => {
     const ids = new Set<string>();
@@ -59,13 +119,14 @@ export default function ProfileScreen() {
     {
       icon: Bell,
       title: 'Notifications',
-      subtitle: 'Wednesday nudges and group activity',
+      subtitle: 'Wednesday nudges (9AM & 8PM)',
       rightComponent: (
         <Switch
           value={notificationsEnabled}
-          onValueChange={setNotificationsEnabled}
+          onValueChange={handleNotificationToggle}
           trackColor={{ false: '#E5E7EB', true: '#FED7AA' }}
           thumbColor={notificationsEnabled ? '#F97316' : '#9CA3AF'}
+          disabled={updatingNotifications}
         />
       ),
     },
@@ -154,6 +215,27 @@ export default function ProfileScreen() {
           </Text>
           <Text style={styles.versionText}>Version 1.0.0</Text>
         </View>
+
+        {/* Test Notifications Button - DEV ONLY */}
+        {__DEV__ && (
+          <TouchableOpacity 
+            style={styles.testButton}
+            onPress={async () => {
+              try {
+                await NotificationService.scheduleTestNotifications();
+                Alert.alert(
+                  'Test Notifications Scheduled! 🧪',
+                  'You should receive test notifications in 30 and 60 seconds. Make sure the app is in the background to see them!'
+                );
+              } catch (error) {
+                Alert.alert('Error', 'Failed to schedule test notifications');
+              }
+            }}
+          >
+            <Bell size={20} color="#FFFFFF" />
+            <Text style={styles.testButtonText}>Test Notifications (Dev Only)</Text>
+          </TouchableOpacity>
+        )}
 
         {/* Logout */}
         <TouchableOpacity 
@@ -358,6 +440,23 @@ const styles = StyleSheet.create({
   },
   logoutText: {
     color: '#EF4444',
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 16,
+    marginLeft: 8,
+  },
+  testButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#10B981',
+    marginTop: 12,
+    marginBottom: 12,
+    marginHorizontal: 20,
+    paddingVertical: 16,
+    borderRadius: 12,
+  },
+  testButtonText: {
+    color: '#FFFFFF',
     fontFamily: 'Inter-SemiBold',
     fontSize: 16,
     marginLeft: 8,

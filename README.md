@@ -62,7 +62,7 @@
 
 ### 🔄 **In Progress**
 - [ ] AI features implementation (Prompt-Me-Please, Caption Genie, Catch-Up Recap)
-- [ ] Push notification system
+- [x] Push notification system → **Wednesday Nudge local notifications**
 - [ ] RAG infrastructure with vector embeddings
 
 ### 🎯 **User Stories (MVP)**
@@ -156,11 +156,17 @@ EXPO_PUBLIC_CAPTION_SERVICE_URL=captions-route-for-render-backend # Needed to ho
 - **Simple over complex**: One action per Wednesday, no endless scrolling
 - **Private over public**: Your closest friends, not the whole internet
 
+
+
 ## 🗂 Database Schema (Implemented)
 
 ```sql
--- Users table
-users (id, name, email, avatar_url, created_at)
+-- Profiles table (extends auth.users)
+profiles (
+  id, name, avatar_url, created_at, updated_at,
+  -- Notification fields (to be added):
+  notifications_enabled, notification_permission_requested, last_waffle_week
+)
 
 -- Groups table  
 groups (id, name, invite_code, created_at)
@@ -172,7 +178,7 @@ group_members (group_id, user_id, joined_at)
 waffles (id, user_id, group_id, content_url, caption, retention_type, created_at, expires_at)
 
 -- Transcripts for RAG
-transcripts (id, waffle_id, text, embedding, created_at)
+transcripts (id, waffle_id, text, embedding, created_at, ai_recap)
 
 -- AI prompt feedback
 prompts_feedback (id, prompt_text, user_reaction, created_at)
@@ -220,8 +226,8 @@ graph TD
 
 ## 🚧 Next Steps
 
-1. **AI Implementation**: Build Edge Functions for TTS and RAG
-2. **Push Notifications**: Implement Wednesday nudger system
+1. **Wednesday Nudge System**: Complete local notification implementation
+2. **AI Implementation**: Build Edge Functions for STT and RAG
 3. **Testing & Polish**: Ensure <3s AI response times
 4. **Demo Preparation**: Record walkthrough video
 5. **Performance Optimization**: Fine-tune real-time features
@@ -233,6 +239,35 @@ This is currently a solo project built for a specific use case, but open to feed
 ## 📄 License
 
 Private project - All rights reserved.
+
+## 🔔 Wednesday Nudge System (In Development)
+
+### **Implementation Approach: Local Notifications**
+We chose local notifications over push notifications for simplicity and reliability:
+- No backend infrastructure required
+- Works offline
+- Respects user's timezone automatically
+- Perfect for predictable, calendar-based reminders
+
+### **Notification Schedule**
+- **When**: Every Wednesday at 9AM and 8PM local time
+- **Who**: Users who haven't posted a waffle that calendar week
+- **Messages**:
+  - 9AM: "Time to share your Wednesday waffle! 🧇"
+  - 8PM: "Don't let Wednesday slip away! Share your waffle 🧇"
+
+### **Smart Behavior**
+- Automatically cancelled when user posts a waffle
+- Calendar week based (Sunday-Saturday)
+- One post to any group counts for the week
+- Simple on/off toggle in settings
+- Opt-out by default (notifications enabled unless user disables)
+
+### **Technical Details**
+- Uses `expo-notifications` for local scheduling
+- Schedules up to 4 weeks in advance (iOS limit: 64 notifications)
+- Reschedules on every app launch to maintain coverage
+- Permission requested during profile setup
 
 ---
 

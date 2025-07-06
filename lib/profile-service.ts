@@ -7,6 +7,9 @@ export interface Profile {
   avatar_url: string | null
   created_at: string
   updated_at: string
+  notifications_enabled: boolean
+  notification_permission_requested: boolean
+  last_waffle_week: string | null
 }
 
 export interface CreateProfileData {
@@ -18,6 +21,9 @@ export interface CreateProfileData {
 export interface UpdateProfileData {
   name?: string
   avatar_url?: string | null
+  notifications_enabled?: boolean
+  notification_permission_requested?: boolean
+  last_waffle_week?: string | null
 }
 
 export class ProfileService {

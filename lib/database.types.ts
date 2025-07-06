@@ -11,6 +11,9 @@ export interface Database {
           avatar_url: string | null
           created_at: string
           updated_at: string
+          notifications_enabled: boolean
+          notification_permission_requested: boolean
+          last_waffle_week: string | null
         }
         Insert: {
           id: string
@@ -18,12 +21,18 @@ export interface Database {
           avatar_url?: string | null
           created_at?: string
           updated_at?: string
+          notifications_enabled?: boolean
+          notification_permission_requested?: boolean
+          last_waffle_week?: string | null
         }
         Update: {
           id?: string
           name?: string
           avatar_url?: string | null
           updated_at?: string
+          notifications_enabled?: boolean
+          notification_permission_requested?: boolean
+          last_waffle_week?: string | null
         }
       }
       groups: {

@@ -27,7 +27,15 @@
       "expo-router",
       "expo-font",
       "expo-web-browser",
-      "expo-video"
+      "expo-video",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#F97316",
+          "sounds": []
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

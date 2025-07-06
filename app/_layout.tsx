@@ -24,7 +24,7 @@ import ProfileSetup from '@/components/ProfileSetup';
 SplashScreen.preventAutoHideAsync();
 
 // FIXME: remove this. Kept for now since easier to scan QR
-if (true) {
+if (false) {
   console.log = () => {};
   console.warn = () => {};
   console.error = () => {};
@@ -66,6 +66,28 @@ export default function RootLayout() {
       SplashScreen.hideAsync();
     }
   }, [fontsLoaded, fontError]);
+
+  // Set up notifications for authenticated users
+  useEffect(() => {
+    const setupNotifications = async () => {
+      if (session && hasProfile && profile) {
+        try {
+          const { NotificationService } = await import('../lib/notification-service');
+          
+          // Check if user has enabled notifications
+          if (profile.notifications_enabled !== false) {
+            // Reschedule notifications on app launch to maintain coverage
+            await NotificationService.scheduleWeeklyNudges();
+            console.log('✅ Wednesday nudges rescheduled on app launch');
+          }
+        } catch (error) {
+          console.error('Failed to set up notifications:', error);
+        }
+      }
+    };
+
+    setupNotifications();
+  }, [session, hasProfile, profile]);
 
   if (!fontsLoaded && !fontError) {
     return null;

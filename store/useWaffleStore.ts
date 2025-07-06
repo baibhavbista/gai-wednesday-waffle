@@ -468,6 +468,18 @@ export const useWaffleStore = create<WaffleState>((set, get) => ({
         }));
 
         console.log('✅ Posted waffle successfully:', newWaffle.id);
+
+        // Cancel current week's nudges and update last waffle week
+        try {
+          const { NotificationService } = await import('@/lib/notification-service');
+          await NotificationService.cancelCurrentWeekNudges();
+          await NotificationService.updateLastWaffleWeek(currentUser.id);
+          console.log('✅ Notifications updated: canceled current week nudges');
+        } catch (notifError) {
+          console.error('Failed to update notifications:', notifError);
+          // Don't fail the whole operation if notification update fails
+        }
+
         console.log('🏪 === STORE addMessage END ===');
       }
     } catch (error) {
