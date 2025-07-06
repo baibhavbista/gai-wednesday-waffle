@@ -81,6 +81,7 @@ export default function CameraScreen() {
   // Prompt-Me-Please states
   const [starterPrompts, setStarterPrompts] = useState<string[]>([]);
   const [showStarterOverlay, setShowStarterOverlay] = useState(false);
+  const [selectedPrompt, setSelectedPrompt] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -113,8 +114,10 @@ export default function CameraScreen() {
   useEffect(() => {
     if (initialPromptsString && !isRecording && !showVideoPreview) {
       try {
+        console.log('🔍 Initial prompts:', initialPromptsString);
         const prompts = JSON.parse(initialPromptsString);
         if (Array.isArray(prompts) && prompts.length > 0) {
+
           setStarterPrompts(prompts);
           setShowStarterOverlay(true);
         }
@@ -221,6 +224,7 @@ export default function CameraScreen() {
       idleTimer.current = setTimeout(async () => {
         try {
           const prompts = await getConversationStarters(selectedGroupId, currentUser.id);
+          console.log('🔍 Prompt-Me-Please prompts:', prompts);
           if (prompts.length) {
             setStarterPrompts(prompts);
             setShowStarterOverlay(true);
@@ -454,6 +458,8 @@ export default function CameraScreen() {
     // Reset video states
     setShowVideoPreview(false);
     setVideoUri(null);
+    // Clear selected prompt when retaking
+    setSelectedPrompt(null);
   };
 
   const downloadVideo = async () => {
@@ -814,9 +820,20 @@ export default function CameraScreen() {
               <TouchableOpacity
                 key={idx}
                 style={styles.promptChip}
-                onPress={() => {
-                  setCaption(prompt);
+                onPress={async () => {
+                  setSelectedPrompt(prompt);
                   setShowStarterOverlay(false);
+                  
+                  // Small delay for smooth transition before recording starts
+                  setTimeout(async () => {
+                    try {
+                      await startRecording();
+                    } catch (error) {
+                      console.error('Failed to start recording after prompt selection:', error);
+                      // Reset selected prompt if recording fails
+                      setSelectedPrompt(null);
+                    }
+                  }, 300);
                 }}
               >
                 <Text style={styles.promptText}>{prompt}</Text>
@@ -892,6 +909,14 @@ export default function CameraScreen() {
           <Text style={styles.recordingText}>
             {formatTime(recordingTime)}
           </Text>
+        </View>
+      )}
+
+      {/* Selected Prompt Display - Show during recording */}
+      {isRecording && selectedPrompt && (
+        <View style={styles.selectedPromptContainer}>
+          <Text style={styles.selectedPromptLabel}>Recording about:</Text>
+          <Text style={styles.selectedPromptText}>{selectedPrompt}</Text>
         </View>
       )}
 
@@ -1326,5 +1351,29 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-SemiBold',
     color: '#1F2937',
     textAlign: 'center',
+  },
+  selectedPromptContainer: {
+    position: 'absolute',
+    top: 200,
+    left: 20,
+    right: 20,
+    backgroundColor: 'rgba(249, 115, 22, 0.9)',
+    borderRadius: 12,
+    padding: 12,
+    alignItems: 'center',
+  },
+  selectedPromptLabel: {
+    fontSize: 12,
+    fontFamily: 'Inter-Medium',
+    color: '#FFFFFF',
+    marginBottom: 4,
+    opacity: 0.9,
+  },
+  selectedPromptText: {
+    fontSize: 14,
+    fontFamily: 'Inter-SemiBold',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    lineHeight: 20,
   },
 });

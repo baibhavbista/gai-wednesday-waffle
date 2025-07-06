@@ -11,7 +11,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { BarChart3, Lightbulb, Search } from 'lucide-react-native';
-import { getCatchUpSummary } from '../lib/ai-service';
+import { getCatchUpSummary, getConversationStarters } from '../lib/ai-service';
 
 interface AISuggestionPillsProps {
   groupId: string;
@@ -141,18 +141,26 @@ export default function AISuggestionPills({
     setNeedIdeasLoading(true);
 
     try {
-      // Mock API call - replace with real implementation
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      // Call real AI service to get conversation starters
+      const prompts = await getConversationStarters(groupId, userId);
       
-      // Mock conversation starters
-      const mockPrompts = [
-        "What's the highlight of your week so far?",
-        "Share something that made you smile today!"
-      ];
-      
-      onNeedIdeasPress(mockPrompts);
+      if (prompts && prompts.length > 0) {
+        onNeedIdeasPress(prompts);
+      } else {
+        // Fallback if no prompts are returned
+        Alert.alert(
+          'No Ideas Available',
+          'Unable to generate conversation starters at this time. Please try again later.',
+          [{ text: 'OK' }]
+        );
+      }
     } catch (error) {
       console.error('Failed to get conversation starters:', error);
+      Alert.alert(
+        'Error',
+        'Failed to load conversation ideas. Please try again.',
+        [{ text: 'OK' }]
+      );
     } finally {
       setNeedIdeasLoading(false);
     }
