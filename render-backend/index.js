@@ -16,6 +16,9 @@ const { URL } = require('url'); // Use Node.js's built-in URL parser
 const { zodResponseFormat } = require("openai/helpers/zod");
 const { z } = require("zod");
 const cors = require('cors');
+const fsPromises = require('fs').promises;
+const { promisify } = require('util');
+const execAsync = promisify(exec);
 
 const Suggestions = z.object({
   suggestions: z.array(z.string()),
@@ -353,94 +356,171 @@ app.post(
   }
 );
 
+/* =============================
+   Helper: Extract video duration
+   ============================= */
+
+async function getVideoDuration(videoPath) {
+  try {
+    console.log('[Duration] Extracting duration for:', videoPath);
+    
+    // Use ffprobe to get video duration
+    // -v error: Only show errors
+    // -show_entries format=duration: Show only duration
+    // -of default=noprint_wrappers=1:nokey=1: Output just the number
+    const command = `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${videoPath}"`;
+    
+    const { stdout } = await execAsync(command);
+    const duration = parseFloat(stdout.trim());
+    
+    if (isNaN(duration)) {
+      throw new Error('Invalid duration extracted');
+    }
+    
+    // Round to nearest second
+    const durationSeconds = Math.round(duration);
+    console.log('[Duration] Extracted duration:', durationSeconds, 'seconds');
+    
+    return durationSeconds;
+  } catch (error) {
+    console.error('[Duration] Extraction failed:', error);
+    // Return a default duration if extraction fails
+    return 180; // 3 minutes default
+  }
+}
+
+/* =============================
+   Helper: Generate video thumbnail
+   ============================= */
+
+async function generateVideoThumbnail(videoPath, outputPath) {
+  try {
+    console.log('[Thumbnail] Generating thumbnail for:', videoPath);
+    
+    // Use FFmpeg to extract a frame at 1 second (or 10% of video duration)
+    // -ss 1: Seek to 1 second
+    // -vframes 1: Extract 1 frame
+    // -vf scale=640:-1: Scale to 640px width, maintain aspect ratio
+    const command = `ffmpeg -i "${videoPath}" -ss 1 -vframes 1 -vf "scale=640:-1" -q:v 2 "${outputPath}"`;
+    
+    await execAsync(command);
+    console.log('[Thumbnail] Generated successfully:', outputPath);
+    
+    return outputPath;
+  } catch (error) {
+    console.error('[Thumbnail] Generation failed:', error);
+    
+    // Fallback: Try to get the first frame
+    try {
+      const fallbackCommand = `ffmpeg -i "${videoPath}" -vframes 1 -vf "scale=640:-1" -q:v 2 "${outputPath}"`;
+      await execAsync(fallbackCommand);
+      console.log('[Thumbnail] Generated first frame as fallback');
+      return outputPath;
+    } catch (fallbackError) {
+      console.error('[Thumbnail] Fallback also failed:', fallbackError);
+      throw fallbackError;
+    }
+  }
+}
+
 // Endpoint for processing full video transcriptions, triggered by Supabase Storage webhook.
 app.post('/process-full-video', async (req, res) => {
-  console.log('Received webhook for full video processing.', req.body.record);
-  // The webhook payload from Supabase Storage for a new object.
-  const { name: fileName } = req.body.record;
+  console.log('[Webhook] Received video processing request');
+  const { object } = req.body;
   
-  // Normalize the file path
-  const normalizedPath = fileName.replace(/^\/+/, '').replace(/\/{2,}/g, '/');
-  console.log('Path analysis:', {
-    originalPath: fileName,
-    normalizedPath,
-    segments: normalizedPath.split('/'),
-    extension: path.extname(fileName),
-  });
-
-  const smallFileName = path.parse(normalizedPath).name;
-
-  if (!normalizedPath || !fileName) {
-    console.error('Invalid webhook payload:', req.body);
-    return res.status(400).json({ error: 'Invalid webhook payload.' });
+  if (!object || !object.name) {
+    console.error('[Webhook] Invalid webhook data:', req.body);
+    return res.status(400).json({ error: 'Invalid webhook data' });
   }
 
-  console.log(`Starting processing for fileName: ${fileName}`);
-  console.log('Full webhook payload:', JSON.stringify(req.body, null, 2));
-  let tempFiles = [];
+  const videoPath = object.name;
+  const bucketId = object.bucket_id;
+  console.log(`[Webhook] Processing video: ${videoPath} from bucket: ${bucketId}`);
+
+  let tempVideoPath = null;
+  let tempAudioPath = null;
+  let tempThumbnailPath = null;
 
   try {
-    // Verify bucket exists and is accessible
-    console.log('Verifying storage bucket access...');
-    const { data: bucketData, error: bucketError } = await serviceRoleClient.storage
-      .getBucket('waffles');
-    
-    if (bucketError) {
-      console.error('Bucket verification failed:', bucketError);
-      throw new Error('Failed to verify storage bucket access');
-    }
-    console.log('Bucket verification successful:', bucketData);
-
-    // 1. Download video from Supabase Storage (using service role client)
-    console.log(`Attempting to download from Supabase Storage...`);
-    console.log(`Bucket: waffles`);
-    console.log(`File path: ${normalizedPath}`);
-    console.log(`Using Supabase URL: ${process.env.SUPABASE_URL}`);
-    console.log(`Service role key present: ${!!process.env.SUPABASE_SERVICE_ROLE_KEY}`);
-    
-    const { data, error: downloadError } = await serviceRoleClient.storage
-      .from('waffles')
-      .download(normalizedPath);
+    // Download video from Supabase Storage
+    console.log('[Webhook] Downloading video from storage...');
+    const { data: videoData, error: downloadError } = await supabase.storage
+      .from(bucketId)
+      .download(videoPath);
     
     if (downloadError) {
-      console.error('Supabase download error details:', {
-        message: downloadError.message,
-        status: downloadError?.originalError?.status,
-        statusText: downloadError?.originalError?.statusText,
-        responseBody: await downloadError?.originalError?.text?.(),
-      });
-      throw downloadError;
+      throw new Error(`Failed to download video: ${downloadError.message}`);
     }
 
-    console.log('Download successful, data type:', typeof data);
-    console.log('Data size:', data ? Buffer.from(await data.arrayBuffer()).length : 0, 'bytes');
+    // Save video to temp file
+    tempVideoPath = tmp.tmpNameSync({ postfix: '.mp4' });
+    const videoBuffer = Buffer.from(await videoData.arrayBuffer());
+    await fsPromises.writeFile(tempVideoPath, videoBuffer);
+    console.log('[Webhook] Video saved to:', tempVideoPath);
 
-    const videoBuffer = Buffer.from(await data.arrayBuffer());
-    const tempVideoPath = tmp.tmpNameSync({ postfix: path.extname(fileName) });
-    fs.writeFileSync(tempVideoPath, videoBuffer);
-    tempFiles.push(tempVideoPath);
-    console.log(`Successfully downloaded video to ${tempVideoPath}`);
+    // Extract video duration
+    const videoDuration = await getVideoDuration(tempVideoPath);
 
-    // 2. Extract audio with FFmpeg
-    const audioPath = `${tempVideoPath}.mp3`;
-    console.log(`Extracting audio to ${audioPath} using FFmpeg...`);
-    await new Promise((resolve, reject) => {
-      const command = `ffmpeg -i ${tempVideoPath} -vn -acodec libmp3lame -q:a 2 ${audioPath}`;
-      exec(command, (error) => {
-        if (error) return reject(new Error('Failed to process video with FFmpeg.'));
-        tempFiles.push(audioPath);
-        resolve();
+    // Generate thumbnail
+    tempThumbnailPath = tmp.tmpNameSync({ postfix: '.jpg' });
+    await generateVideoThumbnail(tempVideoPath, tempThumbnailPath);
+    
+    // Upload thumbnail to Supabase Storage
+    const thumbnailBuffer = await fsPromises.readFile(tempThumbnailPath);
+    const thumbnailPath = videoPath.replace(/\.[^/.]+$/, '_thumb.jpg'); // Replace extension with _thumb.jpg
+    
+    console.log('[Webhook] Uploading thumbnail to:', thumbnailPath);
+    const { error: uploadError } = await supabase.storage
+      .from(bucketId)
+      .upload(thumbnailPath, thumbnailBuffer, {
+        contentType: 'image/jpeg',
+        upsert: true
       });
-    });
-    console.log('Successfully extracted audio.');
+    
+    if (uploadError) {
+      console.error('[Webhook] Failed to upload thumbnail:', uploadError);
+      // Don't fail the whole process if thumbnail upload fails
+    } else {
+      console.log('[Webhook] Thumbnail uploaded successfully');
+      
+      // Get public URL for the thumbnail
+      const { data: { publicUrl: thumbnailUrl } } = supabase.storage
+        .from(bucketId)
+        .getPublicUrl(thumbnailPath);
+      
+      // Update waffle record with thumbnail URL and duration
+      const contentUrl = `https://${process.env.SUPABASE_URL.replace('https://', '')}/storage/v1/object/public/${bucketId}/${videoPath}`;
+      
+      const { error: updateError } = await supabase
+        .from('waffles')
+        .update({ 
+          thumbnail_url: thumbnailUrl,
+          duration_seconds: videoDuration
+        })
+        .eq('content_url', contentUrl);
+      
+      if (updateError) {
+        console.error('[Webhook] Failed to update waffle with thumbnail and duration:', updateError);
+      } else {
+        console.log('[Webhook] Updated waffle with thumbnail URL and duration:', videoDuration, 'seconds');
+      }
+    }
+
+    // Extract audio for transcription
+    tempAudioPath = tmp.tmpNameSync({ postfix: '.mp3' });
+    const audioCommand = `ffmpeg -i "${tempVideoPath}" -vn -ar 16000 -ac 1 -b:a 96k "${tempAudioPath}"`;
+    
+    console.log('[Webhook] Extracting audio...');
+    await execAsync(audioCommand);
+    console.log('[Webhook] Audio extracted to:', tempAudioPath);
 
     // 3. Transcribe with Whisper
     console.log('Transcribing audio with Whisper...');
     const transcript = await openai.audio.transcriptions.create({
-      file: fs.createReadStream(audioPath),
+      file: fs.createReadStream(tempAudioPath),
       model: 'whisper-1',
     });
-    console.log(`Full transcript for ${fileName} received.`);
+    console.log(`Full transcript for ${videoPath} received.`);
 
     // 4. Generate embedding for the transcript text
     console.log('Generating embedding for transcript...');
@@ -499,9 +579,9 @@ Transcript: "${transcript.text}"`
       // Resolve the canonical content_url used in waffles table (full URL)
       const { rows: urlRows } = await dbClient.query(
         `SELECT content_url FROM public.waffles WHERE content_url LIKE '%' || $1 || '%' LIMIT 1`,
-        [fileName]
+        [videoPath]
       );
-      const canonicalContentUrl = urlRows?.[0]?.content_url || fileName; // fall back to file name path
+      const canonicalContentUrl = urlRows?.[0]?.content_url || videoPath; // fall back to file name path
 
       const upsertQuery = `
       INSERT INTO public.transcripts (content_url, text, embedding, ai_recap)
@@ -535,16 +615,16 @@ Transcript: "${transcript.text}"`
     }
 
     // 6. Finish response
-    console.log(`✅ Successfully finished processing for file: ${fileName}`);
+    console.log(`✅ Successfully finished processing for file: ${videoPath}`);
     res.status(200).json({ message: 'Transcript processed, embedded, and saved.' });
 
   } catch (error) {
-    console.error(`❌ Error processing full video for ${fileName}:`, error);
+    console.error(`❌ Error processing full video for ${videoPath}:`, error);
     res.status(500).json({ error: 'Failed to process full video.' });
   } finally {
     // 5. Cleanup all temporary files
-    console.log(`Cleaning up temporary files: ${tempFiles.join(', ')}`);
-    tempFiles.forEach(file => fs.unlink(file, err => {
+    console.log(`Cleaning up temporary files: ${[tempVideoPath, tempAudioPath, tempThumbnailPath].join(', ')}`);
+    [tempVideoPath, tempAudioPath, tempThumbnailPath].forEach(file => fs.unlink(file, err => {
       if (err) console.error(`Error deleting temp file ${file}:`, err);
     }));
     console.log('Cleanup complete.');
@@ -934,6 +1014,8 @@ app.post('/api/search/waffles', authenticateToken, async (req, res) => {
           t.text as transcript,
           t.embedding <=> $2::vector as distance,
           w.*,
+          w.thumbnail_url,
+          w.duration_seconds,
           p.name as user_name,
           p.avatar_url as user_avatar,
           g.name as group_name
@@ -1042,12 +1124,11 @@ app.post('/api/search/waffles', authenticateToken, async (req, res) => {
     // Enhance results with match positions
     const enhancedResults = await Promise.all(
       results.map(async (result) => {
-        // Simplified - no more match position calculation
-        // Generate thumbnail URL (mock for now)
-        const thumbnailUrl = `https://picsum.photos/seed/${result.id}/400/240`;
+        // Use actual thumbnail URL from database, fall back to placeholder
+        const thumbnailUrl = result.thumbnail_url || `https://picsum.photos/seed/${result.id}/400/240`;
         
-        // Estimate video duration (mock - in production, get from storage metadata)
-        const videoDuration = 180 + Math.floor(Math.random() * 120); // 3-5 minutes
+        // Use actual duration from database, fall back to default
+        const videoDuration = result.duration_seconds || 180; // Default 3 minutes if not set
         
         return {
           id: result.id,
