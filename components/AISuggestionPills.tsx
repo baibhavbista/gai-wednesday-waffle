@@ -8,12 +8,13 @@ import {
   Animated,
   Dimensions,
 } from 'react-native';
-import { BarChart3, Lightbulb } from 'lucide-react-native';
+import { BarChart3, Lightbulb, Search } from 'lucide-react-native';
 
 interface AISuggestionPillsProps {
   groupId: string;
   userId: string;
   onNeedIdeasPress: (prompts: string[]) => void;
+  onFindPress: () => void;
   visible: boolean;
 }
 
@@ -21,10 +22,12 @@ export default function AISuggestionPills({
   groupId,
   userId,
   onNeedIdeasPress,
+  onFindPress,
   visible,
 }: AISuggestionPillsProps) {
   const [catchUpLoading, setCatchUpLoading] = useState(false);
   const [needIdeasLoading, setNeedIdeasLoading] = useState(false);
+  const [findLoading, setFindLoading] = useState(false);
   const [showRecapModal, setShowRecapModal] = useState(false);
   const [catchUpSummary, setCatchUpSummary] = useState<string | null>(null);
   
@@ -33,6 +36,7 @@ export default function AISuggestionPills({
   const slideAnim = useRef(new Animated.Value(10)).current;
   const scaleAnimCatchUp = useRef(new Animated.Value(1)).current;
   const scaleAnimNeedIdeas = useRef(new Animated.Value(1)).current;
+  const scaleAnimFind = useRef(new Animated.Value(1)).current;
 
   // Animate pills in/out based on visibility
   useEffect(() => {
@@ -66,7 +70,7 @@ export default function AISuggestionPills({
   }, [visible, fadeAnim, slideAnim]);
 
   const handleCatchUpPress = async () => {
-    if (catchUpLoading || needIdeasLoading) return;
+    if (catchUpLoading || needIdeasLoading || findLoading) return;
 
     // Animate press
     Animated.sequence([
@@ -101,7 +105,7 @@ export default function AISuggestionPills({
   };
 
   const handleNeedIdeasPress = async () => {
-    if (catchUpLoading || needIdeasLoading) return;
+    if (catchUpLoading || needIdeasLoading || findLoading) return;
 
     // Animate press
     Animated.sequence([
@@ -137,6 +141,36 @@ export default function AISuggestionPills({
     }
   };
 
+  const handleFindPress = async () => {
+    if (catchUpLoading || needIdeasLoading || findLoading) return;
+
+    // Animate press
+    Animated.sequence([
+      Animated.spring(scaleAnimFind, {
+        toValue: 0.95,
+        speed: 20,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnimFind, {
+        toValue: 1,
+        damping: 15,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    setFindLoading(true);
+
+    try {
+      // Brief loading state before navigation
+      await new Promise(resolve => setTimeout(resolve, 200));
+      onFindPress();
+    } catch (error) {
+      console.error('Failed to open search:', error);
+    } finally {
+      setFindLoading(false);
+    }
+  };
+
   if (!visible) return null;
 
   return (
@@ -155,10 +189,10 @@ export default function AISuggestionPills({
           <TouchableOpacity
             style={[
               styles.pill,
-              (catchUpLoading || needIdeasLoading) && styles.pillDisabled,
+              (catchUpLoading || needIdeasLoading || findLoading) && styles.pillDisabled,
             ]}
             onPress={handleCatchUpPress}
-            disabled={catchUpLoading || needIdeasLoading}
+            disabled={catchUpLoading || needIdeasLoading || findLoading}
             activeOpacity={0.8}
           >
             {catchUpLoading ? (
@@ -177,10 +211,10 @@ export default function AISuggestionPills({
           <TouchableOpacity
             style={[
               styles.pill,
-              (catchUpLoading || needIdeasLoading) && styles.pillDisabled,
+              (catchUpLoading || needIdeasLoading || findLoading) && styles.pillDisabled,
             ]}
             onPress={handleNeedIdeasPress}
-            disabled={catchUpLoading || needIdeasLoading}
+            disabled={catchUpLoading || needIdeasLoading || findLoading}
             activeOpacity={0.8}
           >
             {needIdeasLoading ? (
@@ -189,6 +223,28 @@ export default function AISuggestionPills({
               <>
                 <Lightbulb size={16} color="#F97316" style={styles.icon} />
                 <Text style={styles.pillText}>Need ideas?</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </Animated.View>
+
+        {/* Find Pill */}
+        <Animated.View style={{ transform: [{ scale: scaleAnimFind }] }}>
+          <TouchableOpacity
+            style={[
+              styles.pill,
+              (catchUpLoading || needIdeasLoading || findLoading) && styles.pillDisabled,
+            ]}
+            onPress={handleFindPress}
+            disabled={catchUpLoading || needIdeasLoading || findLoading}
+            activeOpacity={0.8}
+          >
+            {findLoading ? (
+              <ActivityIndicator size="small" color="#F97316" />
+            ) : (
+              <>
+                <Search size={16} color="#F97316" style={styles.icon} />
+                <Text style={styles.pillText}>Find</Text>
               </>
             )}
           </TouchableOpacity>

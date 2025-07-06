@@ -43,6 +43,44 @@ export interface Group {
   unreadCount: number;
 }
 
+export interface SearchResult {
+  id: string;
+  userId: string;
+  userName: string;
+  userAvatar: string;
+  groupName: string;
+  groupId: string;
+  videoUrl: string;
+  thumbnailUrl: string;
+  transcript: string;
+  matchStart: number;
+  matchEnd: number;
+  timestamp: number;
+  videoDuration: number;
+  createdAt: Date;
+  matchPositions: number[];
+}
+
+export interface SearchState {
+  searchQuery: string;
+  searchResults: any[];
+  isSearching: boolean;
+  searchHistory: string[];
+  searchFilters: {
+    groupIds: string[];
+    userIds: string[];
+    dateRange: { start: Date | null; end: Date | null };
+    mediaType: 'video' | 'photo' | 'all';
+  };
+  setSearchQuery: (query: string) => void;
+  setSearchResults: (results: any[]) => void;
+  setIsSearching: (isSearching: boolean) => void;
+  addToSearchHistory: (query: string) => void;
+  clearSearchHistory: () => void;
+  setSearchFilters: (filters: Partial<SearchState['searchFilters']>) => void;
+  resetSearchFilters: () => void;
+}
+
 export interface WaffleState {
   currentUser: {
     id: string;
@@ -57,6 +95,20 @@ export interface WaffleState {
   isLoading: boolean;
   hasGroupsInitLoaded: boolean;
   error: string | null;
+  
+  // Search state
+  searchQuery: string;
+  searchResults: SearchResult[];
+  isSearching: boolean;
+  searchHistory: string[];
+  searchFilters: {
+    groupIds: string[];
+    userIds: string[];
+    dateRange: { start: Date | null; end: Date | null };
+    mediaType: 'video' | 'photo' | 'all';
+  };
+  totalSearchResults: number;
+  hasMoreSearchResults: boolean;
   
   // Actions
   setCurrentUser: (user: WaffleState['currentUser']) => void;
@@ -73,6 +125,14 @@ export interface WaffleState {
   setGroupsLoaded: (loaded: boolean) => void;
   setError: (error: string | null) => void;
   clearData: () => void; // NEW: Clear data on logout
+  
+  // Search actions
+  setSearchQuery: (query: string) => void;
+  searchWaffles: (query: string, groupId?: string) => Promise<void>;
+  clearSearchResults: () => void;
+  addToSearchHistory: (query: string) => void;
+  clearSearchHistory: () => void;
+  loadMoreSearchResults: () => Promise<void>;
   
   // Member cache functions
   addToMemberCache: (userProfile: UserProfile) => void;
@@ -244,6 +304,20 @@ export const useWaffleStore = create<WaffleState>((set, get) => ({
   hasGroupsInitLoaded: false,
   error: null,
 
+  // Search state initialization
+  searchQuery: '',
+  searchResults: [],
+  isSearching: false,
+  searchHistory: [],
+  searchFilters: {
+    groupIds: [],
+    userIds: [],
+    dateRange: { start: null, end: null },
+    mediaType: 'all',
+  },
+  totalSearchResults: 0,
+  hasMoreSearchResults: false,
+
   setCurrentUser: (user) => set({ currentUser: user }),
 
   // NEW: Load real groups from Supabase
@@ -374,6 +448,9 @@ export const useWaffleStore = create<WaffleState>((set, get) => ({
     messages: [],
     memberCache: new Map(),
     error: null,
+    searchQuery: '',
+    searchResults: [],
+    searchHistory: [],
   }),
   
   setGroups: (groups) => set({ groups }),
@@ -986,4 +1063,97 @@ export const useWaffleStore = create<WaffleState>((set, get) => ({
     set({ memberCache: new Map() });
     if (__DEV__) console.log('🗑️ Cleared member cache');
   },
+
+  // Search actions
+  setSearchQuery: (query) => set({ searchQuery: query }),
+  
+  searchWaffles: async (query: string, groupId?: string) => {
+    const currentUser = get().currentUser;
+    if (!currentUser) {
+      throw new Error('User not authenticated');
+    }
+
+    set({ isSearching: true, searchQuery: query });
+
+    try {
+      // TODO: Replace with real API call
+      // const { data, error } = await searchService.searchWaffles(query, groupId);
+      
+      // Mock search implementation
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Mock results - in real implementation, this would come from the API
+      const mockResults: SearchResult[] = [
+        {
+          id: '1',
+          userId: 'user-1',
+          userName: 'Josh M.',
+          userAvatar: 'https://ui-avatars.com/api/?name=Josh',
+          groupName: 'Work Friends',
+          groupId: 'group-1',
+          videoUrl: 'mock-video-url',
+          thumbnailUrl: 'https://picsum.photos/200/120',
+          transcript: "I'm really excited to share that I just accepted a new position at Tesla! The team seems amazing and I'll be working on autonomous driving features. Can't wait to start next month!",
+          matchStart: 42,
+          matchEnd: 67,
+          timestamp: 135,
+          videoDuration: 270,
+          createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+          matchPositions: [135, 203],
+        },
+      ];
+
+      set({ 
+        searchResults: mockResults,
+        totalSearchResults: mockResults.length,
+        hasMoreSearchResults: false,
+        isSearching: false,
+      });
+
+      // Add to search history
+      get().addToSearchHistory(query);
+    } catch (error) {
+      console.error('Search failed:', error);
+      set({ 
+        searchResults: [],
+        isSearching: false,
+        error: 'Search failed. Please try again.',
+      });
+    }
+  },
+  
+  clearSearchResults: () => set({ 
+    searchResults: [],
+    searchQuery: '',
+    totalSearchResults: 0,
+    hasMoreSearchResults: false,
+  }),
+  
+  addToSearchHistory: (query: string) => set((state) => ({
+    searchHistory: [query, ...state.searchHistory.filter(q => q !== query)].slice(0, 10)
+  })),
+  
+  clearSearchHistory: () => set({ searchHistory: [] }),
+  
+  loadMoreSearchResults: async () => {
+    // TODO: Implement pagination
+    console.log('Loading more search results...');
+  },
+
+  setSearchResults: (results: SearchResult[]) => set({ searchResults: results }),
+
+  setIsSearching: (isSearching: boolean) => set({ isSearching }),
+
+  setSearchFilters: (filters: Partial<WaffleState['searchFilters']>) => set((state) => ({
+    searchFilters: { ...state.searchFilters, ...filters }
+  })),
+
+  resetSearchFilters: () => set({
+    searchFilters: {
+      groupIds: [],
+      userIds: [],
+      dateRange: { start: null, end: null },
+      mediaType: 'all',
+    }
+  }),
 }));

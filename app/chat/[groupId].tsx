@@ -18,6 +18,7 @@ import { ArrowLeft, Camera, Heart, MessageCircle, Eye, Clock, Send } from 'lucid
 import WaffleMessage from '@/components/WaffleMessage';
 import WednesdayNudge from '@/components/WednesdayNudge';
 import AISuggestionPills from '@/components/AISuggestionPills';
+import WaffleSearchView from '@/components/WaffleSearchView';
 import { useRealtime } from '@/hooks/useRealtime';
 
 export default function ChatScreen() {
@@ -43,6 +44,7 @@ export default function ChatScreen() {
   const [messageText, setMessageText] = useState('');
   const [viewableItems, setViewableItems] = useState<string[]>([]);
   const [showAIPills, setShowAIPills] = useState(true);
+  const [showSearchView, setShowSearchView] = useState(false);
 
   // Real-time hook - no longer need manual subscription calls
   const { status } = useRealtime();
@@ -173,6 +175,10 @@ export default function ChatScreen() {
     });
   };
 
+  const handleFindPress = () => {
+    setShowSearchView(true);
+  };
+
   const handleSendMessage = async () => {
     if (!messageText.trim() || !currentUser || !groupId) return;
 
@@ -291,6 +297,7 @@ export default function ChatScreen() {
           groupId={groupId}
           userId={currentUser?.id || ''}
           onNeedIdeasPress={handleNeedIdeasPress}
+          onFindPress={handleFindPress}
           visible={showAIPills && !isLoading && groupMessages.length > 0}
         />
 
@@ -332,6 +339,13 @@ export default function ChatScreen() {
           missingMembers={missingMembers}
         />
       </KeyboardAvoidingView>
+
+      {/* Search View Modal */}
+      <WaffleSearchView
+        visible={showSearchView}
+        onClose={() => setShowSearchView(false)}
+        groupId={groupId}
+      />
     </SafeAreaView>
   );
 }
