@@ -5,12 +5,12 @@ import * as FileSystem from 'expo-file-system';
  * Fetches AI-generated caption suggestions from the backend service.
  *
  * @param videoUri The URI of the local video file.
- * @param styleCaptions An array of strings representing example captions to guide the AI's style.
+ * @param groupId Optional group ID for context-aware caption generation.
  * @returns A promise that resolves to an array of caption suggestions.
  */
 export const getCaptionSuggestions = async (
   videoUri: string,
-  styleCaptions: string[]
+  groupId?: string | null
 ): Promise<string[]> => {
   // TODO: Replace with your actual Render service URL from your environment variables.
   const serviceUrl = process.env.EXPO_PUBLIC_CAPTION_SERVICE_URL;
@@ -32,7 +32,11 @@ export const getCaptionSuggestions = async (
     name: 'video.mov',
     type: 'video/mov',
   } as any);
-  formData.append('styleCaptions', JSON.stringify(styleCaptions));
+  
+  // Add group_id if provided
+  if (groupId) {
+    formData.append('group_id', groupId);
+  }
 
   try {
     const response = await fetch(`${serviceUrl}/generate-captions`, {
@@ -68,12 +72,12 @@ export const getCaptionSuggestions = async (
  * Fetches AI-generated caption suggestions from the backend service using an audio file.
  *
  * @param audioUri The URI of the local audio file.
- * @param styleCaptions An array of strings representing example captions to guide the AI's style.
+ * @param groupId Optional group ID for context-aware caption generation.
  * @returns A promise that resolves to an array of caption suggestions.
  */
 export const getCaptionSuggestionsFromAudio = async (
   audioUri: string,
-  styleCaptions: string[]
+  groupId?: string | null
 ): Promise<string[]> => {
   const serviceUrl = process.env.EXPO_PUBLIC_CAPTION_SERVICE_URL;
   if (!serviceUrl) {
@@ -96,7 +100,11 @@ export const getCaptionSuggestionsFromAudio = async (
     name: `audio.m4a`,  // Always use .m4a as the backend will convert it
     type: 'audio/x-m4a',  // More standard MIME type for M4A files
   } as any);
-  formData.append('styleCaptions', JSON.stringify(styleCaptions));
+  
+  // Add group_id if provided
+  if (groupId) {
+    formData.append('group_id', groupId);
+  }
 
   try {
     const response = await fetch(`${serviceUrl}/generate-captions`, {

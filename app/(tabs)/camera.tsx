@@ -257,8 +257,7 @@ export default function CameraScreen() {
       const extension = audioUri.split('.').pop()?.toLowerCase();
       console.log('📝 File Extension:', extension);
 
-      const styleCaptions = ['Just another manic monday', 'spilling the tea', 'weekly recap'];
-      const suggestions = await getCaptionSuggestionsFromAudio(audioUri, styleCaptions);
+      const suggestions = await getCaptionSuggestionsFromAudio(audioUri, selectedGroupId);
       setCaptionSuggestions(suggestions);
       console.log('✅ Fast captions generated successfully.');
     } catch (error) {
@@ -284,12 +283,8 @@ export default function CameraScreen() {
     setCaptionSuggestions([]);
 
     try {
-      // For now, using hardcoded style examples as per the plan.
-      // This could be fetched from user settings in the future.
-      const styleCaptions = ['Just another manic monday', 'spilling the tea', 'weekly recap'];
-
       const videoChunkUri = await getVideoChunk(videoUri);
-      const suggestions = await getCaptionSuggestions(videoChunkUri, styleCaptions);
+      const suggestions = await getCaptionSuggestions(videoChunkUri, selectedGroupId);
 
       setCaptionSuggestions(suggestions);
     } catch (error) {
