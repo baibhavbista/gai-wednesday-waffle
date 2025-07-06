@@ -1295,6 +1295,204 @@ app.listen(port, () => {
 });
 
 /* =============================
+   Catch Up endpoint
+   ============================= */
+
+// Cache for catch-up summaries
+const catchUpCache = new Map();
+const CATCHUP_CACHE_TTL = 2 * 60 * 60 * 1000; // 2 hours
+const CATCHUP_RATE_LIMIT = 5 * 60 * 1000; // 5 minutes
+
+// Clean up old cache entries every hour
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of catchUpCache.entries()) {
+    if (now - value.timestamp > CATCHUP_CACHE_TTL) {
+      catchUpCache.delete(key);
+    }
+  }
+}, 60 * 60 * 1000);
+
+app.get('/api/catchup/:groupId', authenticateToken, async (req, res) => {
+  const { groupId } = req.params;
+  const { days = 10 } = req.query;
+  const userId = req.user.sub;
+  
+  console.log(`[CatchUp] Request for group ${groupId}, user ${userId}, days: ${days}`);
+  
+  // Validate days parameter
+  const validDays = Math.min(Math.max(parseInt(days) || 10, 1), 30); // Between 1 and 30 days
+  
+  let dbClient;
+  
+  try {
+    // Check cache first
+    const cacheKey = `catchup:${groupId}:${validDays}`;
+    const cached = catchUpCache.get(cacheKey);
+    
+    if (cached && Date.now() - cached.timestamp < CATCHUP_CACHE_TTL) {
+      console.log('[CatchUp] Returning cached summary');
+      return res.json({ 
+        summary: cached.summary,
+        cached: true,
+        waffleCount: cached.waffleCount,
+        days: validDays
+      });
+    }
+    
+    // Connect to database
+    dbClient = await pool.connect();
+    
+    // Verify user is member of the group
+    const { rows: memberCheck } = await dbClient.query(
+      'SELECT 1 FROM public.group_members WHERE group_id = $1 AND user_id = $2 LIMIT 1',
+      [groupId, userId]
+    );
+    
+    if (memberCheck.length === 0) {
+      return res.status(403).json({ error: 'Not a member of this group' });
+    }
+    
+    // Fetch waffles from the last N days with transcripts
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - validDays);
+    
+    const wafflesQuery = `
+      SELECT 
+        w.id,
+        w.caption,
+        w.created_at,
+        w.content_type,
+        p.name as user_name,
+        t.text as transcript_text,
+        t.ai_recap
+      FROM public.waffles w
+      JOIN public.profiles p ON p.id = w.user_id
+      LEFT JOIN public.transcripts t ON t.content_url = w.content_url
+      WHERE w.group_id = $1 
+        AND w.created_at >= $2
+      ORDER BY w.created_at ASC
+      LIMIT 50;
+    `;
+    
+    const { rows: waffles } = await dbClient.query(wafflesQuery, [groupId, cutoffDate]);
+    
+    console.log(`[CatchUp] Found ${waffles.length} waffles in the last ${validDays} days`);
+    
+    if (waffles.length === 0) {
+      const emptySummary = `No activity in the last ${validDays} days. Time to share something new!`;
+      
+      // Cache the empty result
+      catchUpCache.set(cacheKey, {
+        summary: emptySummary,
+        timestamp: Date.now(),
+        waffleCount: 0
+      });
+      
+      return res.json({ 
+        summary: emptySummary,
+        cached: false,
+        waffleCount: 0,
+        days: validDays
+      });
+    }
+    
+    // Format waffles for LLM - choose shortest content
+    const formattedEntries = waffles.map(waffle => {
+      // Determine the shortest available content
+      const contents = [
+        { type: 'caption', text: waffle.caption, length: waffle.caption?.length || Infinity },
+        { type: 'ai_recap', text: waffle.ai_recap, length: waffle.ai_recap?.length || Infinity },
+        { type: 'transcript', text: waffle.transcript_text, length: waffle.transcript_text?.length || Infinity }
+      ].filter(c => c.text); // Only consider non-null content
+      
+      // Sort by length and pick the shortest
+      contents.sort((a, b) => a.length - b.length);
+      const selectedContent = contents[0];
+      
+      if (!selectedContent) {
+        return null; // Skip if no content available
+      }
+      
+      // Format timestamp
+      const timestamp = new Date(waffle.created_at).toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      });
+      
+      // Truncate content if too long
+      const maxLength = 200;
+      let content = selectedContent.text;
+      if (content.length > maxLength) {
+        content = content.substring(0, maxLength) + '...';
+      }
+      
+      return `[${timestamp}] ${waffle.user_name} > ${content}`;
+    }).filter(Boolean); // Remove any null entries
+    
+    console.log(`[CatchUp] Formatted ${formattedEntries.length} entries for LLM`);
+    
+    // Create prompt for GPT-4o
+    const prompt = `You are a friendly assistant helping someone catch up on their friend group's activity. 
+    
+Based on the following video updates (waffles) from the last ${validDays} days, create a warm, conversational summary that highlights the key moments and overall mood of the group.
+
+Keep it to 2-3 sentences that capture the essence of what's been happening. Focus on:
+- Who's been active
+- Key activities or moments shared
+- The general vibe/mood of the group
+
+Waffles:
+${formattedEntries.join('\n')}
+
+Write a friendly catch-up summary:`;
+
+    console.log('[CatchUp] Sending to GPT-4o for summarization');
+    
+    // Generate summary with GPT-4o
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [{ role: 'system', content: prompt }],
+      temperature: 0.7,
+      max_tokens: 150,
+    });
+    
+    const summary = completion.choices[0]?.message?.content?.trim() || 'Unable to generate summary';
+    
+    console.log('[CatchUp] Generated summary:', summary);
+    
+    // Cache the result
+    catchUpCache.set(cacheKey, {
+      summary,
+      timestamp: Date.now(),
+      waffleCount: waffles.length
+    });
+    
+    // Return the summary
+    res.json({ 
+      summary,
+      cached: false,
+      waffleCount: waffles.length,
+      days: validDays
+    });
+    
+  } catch (error) {
+    console.error('[CatchUp] Error:', error);
+    res.status(500).json({ 
+      error: 'Failed to generate catch-up summary',
+      details: error.message 
+    });
+  } finally {
+    if (dbClient) {
+      dbClient.release();
+    }
+  }
+});
+
+/* =============================
    SSE for AI Answers
    ============================= */
 
