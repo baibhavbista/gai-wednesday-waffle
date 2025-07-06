@@ -99,6 +99,7 @@ export default function CameraScreen() {
 
   // Get the source group ID from params (if navigated from a specific group)
   const sourceGroupId = params.groupId as string;
+  const initialPromptsString = params.initialPrompts as string;
 
   // Initialize selected group - only set if we came from a specific group
   useEffect(() => {
@@ -107,6 +108,21 @@ export default function CameraScreen() {
     }
     // Don't set currentGroupId as default - we want null when coming from bottom nav
   }, [sourceGroupId]);
+
+  // Handle initial prompts from "Need ideas?" pill
+  useEffect(() => {
+    if (initialPromptsString && !isRecording && !showVideoPreview) {
+      try {
+        const prompts = JSON.parse(initialPromptsString);
+        if (Array.isArray(prompts) && prompts.length > 0) {
+          setStarterPrompts(prompts);
+          setShowStarterOverlay(true);
+        }
+      } catch (error) {
+        console.error('Failed to parse initial prompts:', error);
+      }
+    }
+  }, [initialPromptsString, isRecording, showVideoPreview]);
 
   // Configure audio session for dual recording
   useEffect(() => {
@@ -194,6 +210,11 @@ export default function CameraScreen() {
       return;
     }
 
+    // Skip idle timer if we have initial prompts
+    if (initialPromptsString) {
+      return;
+    }
+
     // Only start timer when camera is idle and a group is selected
     if (!isRecording && !showVideoPreview && selectedGroupId && currentUser) {
       clearExisting();
@@ -214,7 +235,7 @@ export default function CameraScreen() {
     return () => {
       clearExisting();
     };
-  }, [isRecording, showVideoPreview, selectedGroupId, currentUser]);
+  }, [isRecording, showVideoPreview, selectedGroupId, currentUser, initialPromptsString]);
 
   const triggerFastCaptions = async (newAudioRecording: Audio.Recording) => {
     let audioRecording = newAudioRecording;
@@ -781,20 +802,34 @@ export default function CameraScreen() {
 
       {/* Prompt-Me-Please overlay */}
       {showStarterOverlay && starterPrompts.length > 0 && (
-        <View style={styles.promptOverlay}>
-          {starterPrompts.map((prompt, idx) => (
+        <TouchableOpacity 
+          style={styles.promptOverlay}
+          activeOpacity={1}
+          onPress={() => setShowStarterOverlay(false)}
+        >
+          <View style={styles.promptContainer}>
+            <Text style={styles.promptTitle}>Need conversation ideas?</Text>
+            <Text style={styles.promptSubtitle}>Tap a prompt to get started</Text>
+            {starterPrompts.map((prompt, idx) => (
+              <TouchableOpacity
+                key={idx}
+                style={styles.promptChip}
+                onPress={() => {
+                  setCaption(prompt);
+                  setShowStarterOverlay(false);
+                }}
+              >
+                <Text style={styles.promptText}>{prompt}</Text>
+              </TouchableOpacity>
+            ))}
             <TouchableOpacity
-              key={idx}
-              style={styles.promptChip}
-              onPress={() => {
-                setCaption(prompt);
-                setShowStarterOverlay(false);
-              }}
+              style={styles.promptDismiss}
+              onPress={() => setShowStarterOverlay(false)}
             >
-              <Text style={styles.promptText}>{prompt}</Text>
+              <Text style={styles.promptDismissText}>Maybe later</Text>
             </TouchableOpacity>
-          ))}
-        </View>
+          </View>
+        </TouchableOpacity>
       )}
 
       {/* Header Controls - Now an overlay */}
@@ -1210,20 +1245,64 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
     justifyContent: 'center',
     alignItems: 'center',
+    zIndex: 1000,
+  },
+  promptContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 24,
+    marginHorizontal: 20,
+    maxWidth: 360,
+    width: '90%',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  promptTitle: {
+    fontSize: 20,
+    fontFamily: 'Poppins-SemiBold',
+    color: '#1F2937',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  promptSubtitle: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    color: '#6B7280',
+    marginBottom: 20,
+    textAlign: 'center',
   },
   promptChip: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#FEF3E8',
     borderRadius: 12,
     padding: 16,
-    margin: 8,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#F97316',
   },
   promptText: {
     fontSize: 16,
-    fontFamily: 'Inter-Regular',
+    fontFamily: 'Inter-Medium',
     color: '#1F2937',
+    textAlign: 'center',
+  },
+  promptDismiss: {
+    marginTop: 8,
+    paddingVertical: 12,
+  },
+  promptDismissText: {
+    fontSize: 14,
+    fontFamily: 'Inter-Medium',
+    color: '#9CA3AF',
+    textAlign: 'center',
   },
   loadingOverlay: {
     position: 'absolute',

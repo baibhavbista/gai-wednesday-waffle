@@ -17,6 +17,7 @@ import { useWaffleStore } from '@/store/useWaffleStore';
 import { ArrowLeft, Camera, Heart, MessageCircle, Eye, Clock, Send } from 'lucide-react-native';
 import WaffleMessage from '@/components/WaffleMessage';
 import WednesdayNudge from '@/components/WednesdayNudge';
+import AISuggestionPills from '@/components/AISuggestionPills';
 import { useRealtime } from '@/hooks/useRealtime';
 
 export default function ChatScreen() {
@@ -41,6 +42,7 @@ export default function ChatScreen() {
   const [showNudge, setShowNudge] = useState(false);
   const [messageText, setMessageText] = useState('');
   const [viewableItems, setViewableItems] = useState<string[]>([]);
+  const [showAIPills, setShowAIPills] = useState(true);
 
   // Real-time hook - no longer need manual subscription calls
   const { status } = useRealtime();
@@ -137,6 +139,11 @@ export default function ChatScreen() {
     }
   }, [groupMessages.length]);
 
+  // Hide AI pills when typing
+  useEffect(() => {
+    setShowAIPills(messageText.length === 0);
+  }, [messageText]);
+
   if (!group) {
     return (
       <SafeAreaView style={styles.container}>
@@ -155,7 +162,16 @@ export default function ChatScreen() {
     router.push(`/(tabs)/camera?groupId=${groupId}`);
   };
 
-
+  const handleNeedIdeasPress = (prompts: string[]) => {
+    // Navigate to camera with initial prompts
+    router.push({
+      pathname: '/(tabs)/camera',
+      params: { 
+        groupId,
+        initialPrompts: JSON.stringify(prompts),
+      }
+    });
+  };
 
   const handleSendMessage = async () => {
     if (!messageText.trim() || !currentUser || !groupId) return;
@@ -269,6 +285,14 @@ export default function ChatScreen() {
             }}
           />
         )}
+
+        {/* AI Suggestion Pills */}
+        <AISuggestionPills
+          groupId={groupId}
+          userId={currentUser?.id || ''}
+          onNeedIdeasPress={handleNeedIdeasPress}
+          visible={showAIPills && !isLoading && groupMessages.length > 0}
+        />
 
         {/* Input Bar */}
         <View style={styles.inputContainer}>
