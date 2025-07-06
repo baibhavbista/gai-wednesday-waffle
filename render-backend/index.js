@@ -110,10 +110,18 @@ app.post(
       return res.status(400).json({ error: 'No video or audio chunk uploaded.' });
     }
 
-    // The client will send style examples as a JSON string array.
-    const styleCaptions = JSON.parse(req.body.styleCaptions || '[]');
+    // Get group_id from request body
+    const groupId = req.body.group_id || null;
+    console.log('Caption generation request:', { 
+      userId: req.user.sub, 
+      groupId,
+      hasVideo: !!videoFile,
+      hasAudio: !!audioFile 
+    });
+
     let tempFiles = [];
     let audioPathForTranscription;
+    let userStyleCaptions = []; // We'll fetch these from the database
 
     try {
       if (audioFile) {
@@ -191,19 +199,75 @@ app.post(
       let dbClient;
       try {
         dbClient = await pool.connect();
-        const similarQuery = `
-          SELECT w.caption
-          FROM public.transcripts t
-          JOIN public.waffles w ON w.content_url = t.content_url
-          WHERE w.caption IS NOT NULL AND t.embedding IS NOT NULL
-          ORDER BY t.embedding <=> $1::vector
-          LIMIT 5;
-        `;
-        const { rows } = await dbClient.query(similarQuery, [previewEmbeddingLiteral]);
+        
+        // NEW: First fetch the user's last 5 captions to understand their style
+        console.log('Fetching user\'s caption style...');
+        let userCaptionsQuery;
+        let userCaptionsParams;
+        
+        if (groupId) {
+          // If group_id provided, get user's captions from that specific group
+          userCaptionsQuery = `
+            SELECT caption
+            FROM public.waffles
+            WHERE user_id = $1 AND group_id = $2 AND caption IS NOT NULL
+            ORDER BY created_at DESC
+            LIMIT 5;
+          `;
+          userCaptionsParams = [req.user.sub, groupId];
+          console.log('Fetching user captions from specific group:', groupId);
+        } else {
+          // If no group_id, get user's captions across all groups
+          userCaptionsQuery = `
+            SELECT caption
+            FROM public.waffles
+            WHERE user_id = $1 AND caption IS NOT NULL
+            ORDER BY created_at DESC
+            LIMIT 5;
+          `;
+          userCaptionsParams = [req.user.sub];
+          console.log('Fetching user captions across all groups');
+        }
+        
+        const { rows: userCaptionRows } = await dbClient.query(userCaptionsQuery, userCaptionsParams);
+        userStyleCaptions = userCaptionRows.map(r => r.caption).filter(Boolean);
+        console.log('User\'s recent captions:', userStyleCaptions);
+        
+        // Then fetch similar captions based on embedding
+        let similarQuery;
+        let similarParams;
+        
+        if (groupId) {
+          // If group_id provided, search for similar captions within that group
+          similarQuery = `
+            SELECT w.caption
+            FROM public.transcripts t
+            JOIN public.waffles w ON w.content_url = t.content_url
+            WHERE w.group_id = $2 AND w.caption IS NOT NULL AND t.embedding IS NOT NULL
+            ORDER BY t.embedding <=> $1::vector
+            LIMIT 5;
+          `;
+          similarParams = [previewEmbeddingLiteral, groupId];
+          console.log('Searching for similar captions within group:', groupId);
+        } else {
+          // If no group_id, only search within user's own waffles for privacy
+          similarQuery = `
+            SELECT w.caption
+            FROM public.transcripts t
+            JOIN public.waffles w ON w.content_url = t.content_url
+            WHERE w.user_id = $2 AND w.caption IS NOT NULL AND t.embedding IS NOT NULL
+            ORDER BY t.embedding <=> $1::vector
+            LIMIT 5;
+          `;
+          similarParams = [previewEmbeddingLiteral, req.user.sub];
+          console.log('Searching for similar captions within user\'s own waffles');
+        }
+        
+        const { rows } = await dbClient.query(similarQuery, similarParams);
         similarCaptions = rows.map(r => r.caption).filter(Boolean);
         console.log('Found similar captions:', similarCaptions);
       } catch (dbErr) {
-        console.error('DB error during similar caption lookup:', dbErr);
+        console.error('DB error during caption lookup:', dbErr);
       } finally {
         if (dbClient) dbClient.release();
       }
@@ -214,7 +278,7 @@ app.post(
 
         Live transcript:\n"${transcript.text}"
 
-        Captions the user generally likes:\n${styleCaptions.map(c => '"'+c+'"').join('\n')}
+        User's recent caption style:\n${userStyleCaptions.map(c => '"'+c+'"').join('\n')}
 
         Captions from similar past waffles:\n${similarCaptions.map(c => '"'+c+'"').join('\n')}
       `;

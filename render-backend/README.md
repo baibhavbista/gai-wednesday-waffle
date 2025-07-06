@@ -14,8 +14,34 @@ This Node.js service runs on Render.com and provides:
 ### `POST /generate-captions` (Protected)
 Generates 3 AI captions for a video/audio chunk
 - **Auth**: Bearer token (Supabase JWT)
-- **Input**: `videoChunk` or `audioChunk` (multipart/form-data)
+- **Input**: 
+  - `videoChunk` or `audioChunk` (multipart/form-data)
+  - `group_id` (optional) - The group context for caption generation
 - **Output**: `{ suggestions: string[] }`
+- **Behavior**:
+  - **With group_id**: 
+    - User style: Last 5 captions by user in that specific group
+    - Similar content: All waffles from that group (any member)
+  - **Without group_id**: 
+    - User style: Last 5 captions by user across all groups
+    - Similar content: Only user's own waffles (privacy)
+- **Features**: 
+  - Automatically learns from user's last 5 captions
+  - Uses RAG to find similar past waffles
+  - Combines user style with contextual relevance
+
+**Example Usage:**
+```javascript
+// From group chat - includes group context
+const formData = new FormData();
+formData.append('audioChunk', audioBlob);
+formData.append('group_id', 'uuid-of-current-group');
+
+// From camera tab - no group context
+const formData = new FormData();
+formData.append('videoChunk', videoBlob);
+// No group_id - will use user's own content only
+```
 
 ### `POST /process-full-video` (Webhook)
 Processes full videos after upload to Supabase Storage
@@ -79,7 +105,7 @@ User App → Supabase Auth → Render Backend → OpenAI APIs
 
 ## 🔄 Processing Flow
 
-1. **Caption Generation**: Audio chunk → FFmpeg → Whisper → Embeddings → RAG lookup → GPT-4o → 3 captions
+1. **Caption Generation**: Audio chunk → FFmpeg → Whisper → Embeddings → Fetch user's last 5 captions (group-filtered) → RAG lookup (group-aware) → GPT-4o → 3 captions
 2. **Full Processing**: Video upload → Webhook → Download → Transcribe → Embed → Store with AI recap
 3. **Conversation Starters**: Fetch recent transcripts → GPT-4o → 2 contextual prompts
 
