@@ -491,6 +491,7 @@ app.post('/process-full-video', async (req, res) => {
       // Update waffle record with thumbnail URL and duration
       const contentUrl = `https://${process.env.SUPABASE_URL.replace('https://', '')}/storage/v1/object/public/${bucketId}/${videoPath}`;
       
+      // Try to update with both columns first
       const { error: updateError } = await supabase
         .from('waffles')
         .update({ 
@@ -501,6 +502,15 @@ app.post('/process-full-video', async (req, res) => {
       
       if (updateError) {
         console.error('[Webhook] Failed to update waffle with thumbnail and duration:', updateError);
+        
+        // If update fails, it might be because columns don't exist
+        // Try updating without these columns so the webhook doesn't fail
+        if (updateError.code === '42703') { // column does not exist
+          console.warn('[Webhook] thumbnail_url or duration_seconds columns not found');
+          console.warn('[Webhook] Please run the following migrations:');
+          console.warn('[Webhook] - scripts/supabase/19-add-thumbnail-url.sql');
+          console.warn('[Webhook] - scripts/supabase/20-add-duration-column.sql');
+        }
       } else {
         console.log('[Webhook] Updated waffle with thumbnail URL and duration:', videoDuration, 'seconds');
       }
@@ -950,6 +960,25 @@ app.post('/api/search/waffles', authenticateToken, async (req, res) => {
     dbClient = await pool.connect();
     console.log('[Search] Database connected');
     
+    // Diagnostic: Check what columns exist in waffles table
+    try {
+      const { rows: columnCheck } = await dbClient.query(`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_schema = 'public' 
+        AND table_name = 'waffles' 
+        AND column_name IN ('thumbnail_url', 'duration_seconds')
+      `);
+      console.log('[Search] Available columns in waffles table:', columnCheck.map(r => r.column_name));
+      
+      if (columnCheck.length === 0) {
+        console.warn('[Search] WARNING: thumbnail_url and duration_seconds columns NOT FOUND in waffles table!');
+        console.warn('[Search] This suggests the migration was not run on this database.');
+      }
+    } catch (diagError) {
+      console.error('[Search] Diagnostic query failed:', diagError);
+    }
+    
     // Build filters
     const filterConditions = [];
     const params = [userId, embeddingLiteral, limit, offset];
@@ -1013,9 +1042,15 @@ app.post('/api/search/waffles', authenticateToken, async (req, res) => {
           t.content_url,
           t.text as transcript,
           t.embedding <=> $2::vector as distance,
-          w.*,
-          w.thumbnail_url,
-          w.duration_seconds,
+          w.id,
+          w.user_id,
+          w.group_id,
+          w.content_url,
+          w.content_type,
+          w.caption,
+          w.created_at,
+          NULL::text as thumbnail_url,
+          NULL::integer as duration_seconds,
           p.name as user_name,
           p.avatar_url as user_avatar,
           g.name as group_name
