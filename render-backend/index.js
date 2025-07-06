@@ -963,7 +963,47 @@ app.post('/api/search/waffles', authenticateToken, async (req, res) => {
       throw new Error('Database search failed');
     }
     
-    // Get total count for pagination
+    // Get total count for pagination - rebuild filter conditions with new param indices
+    const countFilterConditions = [];
+    const countParams = [userId];
+    let countParamIndex = 2;
+    
+    if (filters.groupIds?.length > 0) {
+      countFilterConditions.push(`w.group_id = ANY($${countParamIndex})`);
+      countParams.push(filters.groupIds);
+      countParamIndex++;
+    }
+    
+    if (filters.userIds?.length > 0) {
+      countFilterConditions.push(`w.user_id = ANY($${countParamIndex})`);
+      countParams.push(filters.userIds);
+      countParamIndex++;
+    }
+    
+    if (dateFilter || filters.dateRange) {
+      const range = dateFilter || filters.dateRange;
+      if (range.start) {
+        countFilterConditions.push(`w.created_at >= $${countParamIndex}`);
+        countParams.push(range.start);
+        countParamIndex++;
+      }
+      if (range.end) {
+        countFilterConditions.push(`w.created_at <= $${countParamIndex}`);
+        countParams.push(range.end);
+        countParamIndex++;
+      }
+    }
+    
+    if (filters.mediaType && filters.mediaType !== 'all') {
+      countFilterConditions.push(`w.content_type = $${countParamIndex}`);
+      countParams.push(filters.mediaType);
+      countParamIndex++;
+    }
+    
+    const countWhereClause = countFilterConditions.length > 0 
+      ? 'AND ' + countFilterConditions.join(' AND ')
+      : '';
+    
     const countQuery = `
       SELECT COUNT(DISTINCT w.id) as total
       FROM public.waffles w
@@ -971,12 +1011,21 @@ app.post('/api/search/waffles', authenticateToken, async (req, res) => {
       JOIN public.transcripts t ON t.content_url = w.content_url
       WHERE gm.user_id = $1
         AND t.embedding IS NOT NULL
-        ${whereClause}
+        ${countWhereClause}
     `;
     
-    const countParams = params.slice(0, -2); // Remove limit and offset
-    const { rows: countResult } = await dbClient.query(countQuery, countParams);
-    const totalCount = parseInt(countResult[0].total);
+    console.log('[Search] Executing count query with params:', countParams.map((p, i) => `$${i + 1}: ${typeof p === 'string' && p.length > 50 ? p.substring(0, 50) + '...' : p}`));
+    
+    let totalCount = 0;
+    try {
+      const { rows: countResult } = await dbClient.query(countQuery, countParams);
+      totalCount = parseInt(countResult[0].total);
+      console.log('[Search] Total count:', totalCount);
+    } catch (countError) {
+      console.error('[Search] Count query error:', countError);
+      // Don't fail the whole search if count fails
+      totalCount = results.length;
+    }
     
     // Enhance results with match positions
     const enhancedResults = await Promise.all(
