@@ -78,7 +78,37 @@ export default function AuthCallback() {
           }
         }
         
-        // Fallback: Check if session already exists (for mobile deep links)
+        // Handle mobile deep links
+        if (Platform.OS !== 'web') {
+          if (__DEV__) console.log('📱 Processing mobile OAuth callback...')
+          
+          // Extract tokens from query params (mobile deep links)
+          const accessToken = params.access_token as string
+          const refreshToken = params.refresh_token as string
+          
+          if (accessToken && refreshToken) {
+            if (__DEV__) console.log('🔑 Mobile OAuth tokens found in params')
+            
+            const { data, error } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken,
+            })
+            
+            if (error) {
+              console.error('❌ Error setting mobile session:', error)
+              router.replace('/')
+              return
+            }
+            
+            if (data.session) {
+              if (__DEV__) console.log('✅ Mobile OAuth successful!')
+              router.replace('/(tabs)')
+              return
+            }
+          }
+        }
+        
+        // Final fallback: Check if session already exists
         const { data: { session }, error } = await supabase.auth.getSession()
         
         if (error) {

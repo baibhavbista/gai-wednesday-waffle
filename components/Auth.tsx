@@ -8,7 +8,8 @@ import {
   TouchableOpacity, 
   ScrollView, 
   KeyboardAvoidingView,
-  Platform 
+  Platform,
+  Image 
 } from 'react-native'
 import { useAuth } from '../hooks/useAuth'
 import { useGoogleAuth } from '../hooks/useGoogleAuth'
@@ -71,9 +72,17 @@ export default function Auth() {
             onPress={handleGoogleAuth}
             disabled={loading || googleLoading}
           >
-            <Text style={styles.googleButtonText}>
-              {googleLoading ? 'Signing in...' : '🍎 Continue with Google'}
-            </Text>
+            <View style={styles.googleButtonContent}>
+              {/* Official Google Logo */}
+              <Image 
+                source={require('../assets/images/auth/google-logo.png')}
+                style={styles.googleLogo}
+                resizeMode="contain"
+              />
+              <Text style={styles.googleButtonText}>
+                {googleLoading ? 'Signing in...' : 'Continue with Google'}
+              </Text>
+            </View>
           </TouchableOpacity>
 
           <View style={styles.divider}>
@@ -221,6 +230,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#ddd',
     marginBottom: 16,
+  },
+  googleButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  googleLogo: {
+    width: 20,
+    height: 20,
+    marginRight: 12,
   },
   googleButtonText: {
     fontSize: 16,
