@@ -1125,10 +1125,10 @@ app.post('/api/search/waffles', authenticateToken, async (req, res) => {
     const enhancedResults = await Promise.all(
       results.map(async (result) => {
         // Use actual thumbnail URL from database, fall back to placeholder
-        const thumbnailUrl = result.thumbnail_url || `https://picsum.photos/seed/${result.id}/400/240`;
+        const thumbnailUrl = result.thumbnail_url ?? `https://picsum.photos/seed/${result.id}/400/240`;
         
         // Use actual duration from database, fall back to default
-        const videoDuration = result.duration_seconds || 180; // Default 3 minutes if not set
+        const videoDuration = result.duration_seconds ?? 180; // Default 3 minutes if not set
         
         return {
           id: result.id,
