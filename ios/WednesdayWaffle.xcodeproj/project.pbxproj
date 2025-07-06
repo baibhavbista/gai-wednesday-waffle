@@ -8,28 +8,28 @@
 
 /* Begin PBXBuildFile section */
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
-		21FD0B477870749BF25057EB /* libPods-wednesdaywaffleapp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 7107D1575E69161AB5DD6FA3 /* libPods-wednesdaywaffleapp.a */; };
+		1CF96EEABB0D0A912684DA1B /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB3275DEDDD4298FA8BE835E /* ExpoModulesProvider.swift */; };
+		303B38CA17856010C88EEE7A /* libPods-WednesdayWaffle.a in Frameworks */ = {isa = PBXBuildFile; fileRef = A4A3D28AA943517FFC68195A /* libPods-WednesdayWaffle.a */; };
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
+		41BB4927550E02F29EE22891 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = EFD56067D484D367183831B5 /* PrivacyInfo.xcprivacy */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
-		CC9B3C214F6011E143421235 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 366EF68485AE4C86B53A8033 /* PrivacyInfo.xcprivacy */; };
-		D85A1031F5A8BA388A53F2A7 /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54C42FC7B90FA60B3C1D5E36 /* ExpoModulesProvider.swift */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		13B07F961A680F5B00A75B9A /* wednesdaywaffleapp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = wednesdaywaffleapp.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = wednesdaywaffleapp/Images.xcassets; sourceTree = "<group>"; };
-		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = wednesdaywaffleapp/Info.plist; sourceTree = "<group>"; };
-		207164D4E0FF71CF592937BB /* Pods-wednesdaywaffleapp.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-wednesdaywaffleapp.release.xcconfig"; path = "Target Support Files/Pods-wednesdaywaffleapp/Pods-wednesdaywaffleapp.release.xcconfig"; sourceTree = "<group>"; };
-		366EF68485AE4C86B53A8033 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; name = PrivacyInfo.xcprivacy; path = wednesdaywaffleapp/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
-		54C42FC7B90FA60B3C1D5E36 /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-wednesdaywaffleapp/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
-		7107D1575E69161AB5DD6FA3 /* libPods-wednesdaywaffleapp.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-wednesdaywaffleapp.a"; sourceTree = BUILT_PRODUCTS_DIR; };
-		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = wednesdaywaffleapp/SplashScreen.storyboard; sourceTree = "<group>"; };
+		13B07F961A680F5B00A75B9A /* WednesdayWaffle.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WednesdayWaffle.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = WednesdayWaffle/Images.xcassets; sourceTree = "<group>"; };
+		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = WednesdayWaffle/Info.plist; sourceTree = "<group>"; };
+		6C2C32400D59884CE02045B7 /* Pods-WednesdayWaffle.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-WednesdayWaffle.debug.xcconfig"; path = "Target Support Files/Pods-WednesdayWaffle/Pods-WednesdayWaffle.debug.xcconfig"; sourceTree = "<group>"; };
+		A4A3D28AA943517FFC68195A /* libPods-WednesdayWaffle.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-WednesdayWaffle.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = WednesdayWaffle/SplashScreen.storyboard; sourceTree = "<group>"; };
+		B650EA1CEBB782DF785282CD /* Pods-WednesdayWaffle.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-WednesdayWaffle.release.xcconfig"; path = "Target Support Files/Pods-WednesdayWaffle/Pods-WednesdayWaffle.release.xcconfig"; sourceTree = "<group>"; };
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
-		D836CD5988344D70CEA4C3D2 /* Pods-wednesdaywaffleapp.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-wednesdaywaffleapp.debug.xcconfig"; path = "Target Support Files/Pods-wednesdaywaffleapp/Pods-wednesdaywaffleapp.debug.xcconfig"; sourceTree = "<group>"; };
+		BB3275DEDDD4298FA8BE835E /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-WednesdayWaffle/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
-		F11748412D0307B40044C1D9 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = wednesdaywaffleapp/AppDelegate.swift; sourceTree = "<group>"; };
-		F11748442D0722820044C1D9 /* wednesdaywaffleapp-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "wednesdaywaffleapp-Bridging-Header.h"; path = "wednesdaywaffleapp/wednesdaywaffleapp-Bridging-Header.h"; sourceTree = "<group>"; };
+		EFD56067D484D367183831B5 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; name = PrivacyInfo.xcprivacy; path = WednesdayWaffle/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		F11748412D0307B40044C1D9 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = WednesdayWaffle/AppDelegate.swift; sourceTree = "<group>"; };
+		F11748442D0722820044C1D9 /* WednesdayWaffle-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "WednesdayWaffle-Bridging-Header.h"; path = "WednesdayWaffle/WednesdayWaffle-Bridging-Header.h"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -37,57 +37,41 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				21FD0B477870749BF25057EB /* libPods-wednesdaywaffleapp.a in Frameworks */,
+				303B38CA17856010C88EEE7A /* libPods-WednesdayWaffle.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		13B07FAE1A68108700A75B9A /* wednesdaywaffleapp */ = {
+		13B07FAE1A68108700A75B9A /* WednesdayWaffle */ = {
 			isa = PBXGroup;
 			children = (
 				F11748412D0307B40044C1D9 /* AppDelegate.swift */,
-				F11748442D0722820044C1D9 /* wednesdaywaffleapp-Bridging-Header.h */,
+				F11748442D0722820044C1D9 /* WednesdayWaffle-Bridging-Header.h */,
 				BB2F792B24A3F905000567C9 /* Supporting */,
 				13B07FB51A68108700A75B9A /* Images.xcassets */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */,
-				366EF68485AE4C86B53A8033 /* PrivacyInfo.xcprivacy */,
+				EFD56067D484D367183831B5 /* PrivacyInfo.xcprivacy */,
 			);
-			name = wednesdaywaffleapp;
-			sourceTree = "<group>";
-		};
-		20E1C599D756F0CB31A235E5 /* wednesdaywaffleapp */ = {
-			isa = PBXGroup;
-			children = (
-				54C42FC7B90FA60B3C1D5E36 /* ExpoModulesProvider.swift */,
-			);
-			name = wednesdaywaffleapp;
-			sourceTree = "<group>";
-		};
-		2182DFC368288E3E450D6962 /* ExpoModulesProviders */ = {
-			isa = PBXGroup;
-			children = (
-				20E1C599D756F0CB31A235E5 /* wednesdaywaffleapp */,
-			);
-			name = ExpoModulesProviders;
+			name = WednesdayWaffle;
 			sourceTree = "<group>";
 		};
 		2D16E6871FA4F8E400B85C8A /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
 				ED297162215061F000B7C4FE /* JavaScriptCore.framework */,
-				7107D1575E69161AB5DD6FA3 /* libPods-wednesdaywaffleapp.a */,
+				A4A3D28AA943517FFC68195A /* libPods-WednesdayWaffle.a */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
 		};
-		42E599A669313AF0DBD75FB6 /* Pods */ = {
+		370E9B9581A5335A32BB7171 /* Pods */ = {
 			isa = PBXGroup;
 			children = (
-				D836CD5988344D70CEA4C3D2 /* Pods-wednesdaywaffleapp.debug.xcconfig */,
-				207164D4E0FF71CF592937BB /* Pods-wednesdaywaffleapp.release.xcconfig */,
+				6C2C32400D59884CE02045B7 /* Pods-WednesdayWaffle.debug.xcconfig */,
+				B650EA1CEBB782DF785282CD /* Pods-WednesdayWaffle.release.xcconfig */,
 			);
 			name = Pods;
 			path = Pods;
@@ -103,12 +87,12 @@
 		83CBB9F61A601CBA00E9B192 = {
 			isa = PBXGroup;
 			children = (
-				13B07FAE1A68108700A75B9A /* wednesdaywaffleapp */,
+				13B07FAE1A68108700A75B9A /* WednesdayWaffle */,
 				832341AE1AAA6A7D00B99B32 /* Libraries */,
 				83CBBA001A601CBA00E9B192 /* Products */,
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
-				42E599A669313AF0DBD75FB6 /* Pods */,
-				2182DFC368288E3E450D6962 /* ExpoModulesProviders */,
+				370E9B9581A5335A32BB7171 /* Pods */,
+				CA7A3EE9EF3A457756D898F4 /* ExpoModulesProviders */,
 			);
 			indentWidth = 2;
 			sourceTree = "<group>";
@@ -118,7 +102,7 @@
 		83CBBA001A601CBA00E9B192 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				13B07F961A680F5B00A75B9A /* wednesdaywaffleapp.app */,
+				13B07F961A680F5B00A75B9A /* WednesdayWaffle.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -129,32 +113,48 @@
 				BB2F792C24A3F905000567C9 /* Expo.plist */,
 			);
 			name = Supporting;
-			path = wednesdaywaffleapp/Supporting;
+			path = WednesdayWaffle/Supporting;
+			sourceTree = "<group>";
+		};
+		CA7A3EE9EF3A457756D898F4 /* ExpoModulesProviders */ = {
+			isa = PBXGroup;
+			children = (
+				FE68B18BFC346CADB2F87236 /* WednesdayWaffle */,
+			);
+			name = ExpoModulesProviders;
+			sourceTree = "<group>";
+		};
+		FE68B18BFC346CADB2F87236 /* WednesdayWaffle */ = {
+			isa = PBXGroup;
+			children = (
+				BB3275DEDDD4298FA8BE835E /* ExpoModulesProvider.swift */,
+			);
+			name = WednesdayWaffle;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		13B07F861A680F5B00A75B9A /* wednesdaywaffleapp */ = {
+		13B07F861A680F5B00A75B9A /* WednesdayWaffle */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "wednesdaywaffleapp" */;
+			buildConfigurationList = 13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "WednesdayWaffle" */;
 			buildPhases = (
 				08A4A3CD28434E44B6B9DE2E /* [CP] Check Pods Manifest.lock */,
-				0C70E27F2C8CAAE21486BDDC /* [Expo] Configure project */,
+				40E2CFA6242C51D382D10457 /* [Expo] Configure project */,
 				13B07F871A680F5B00A75B9A /* Sources */,
 				13B07F8C1A680F5B00A75B9A /* Frameworks */,
 				13B07F8E1A680F5B00A75B9A /* Resources */,
 				00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */,
 				800E24972A6A228C8D4807E9 /* [CP] Copy Pods Resources */,
-				EF2A4CAA80EA1791E86C4E97 /* [CP] Embed Pods Frameworks */,
+				10E0734D42AD5AD5F18E7A05 /* [CP] Embed Pods Frameworks */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 			);
-			name = wednesdaywaffleapp;
-			productName = wednesdaywaffleapp;
-			productReference = 13B07F961A680F5B00A75B9A /* wednesdaywaffleapp.app */;
+			name = WednesdayWaffle;
+			productName = WednesdayWaffle;
+			productReference = 13B07F961A680F5B00A75B9A /* WednesdayWaffle.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -166,13 +166,13 @@
 				LastUpgradeCheck = 1130;
 				TargetAttributes = {
 					13B07F861A680F5B00A75B9A = {
-						DevelopmentTeam = WV24HLV3W4;
 						LastSwiftMigration = 1250;
+						DevelopmentTeam = "WV24HLV3W4";
 						ProvisioningStyle = Automatic;
 					};
 				};
 			};
-			buildConfigurationList = 83CBB9FA1A601CBA00E9B192 /* Build configuration list for PBXProject "wednesdaywaffleapp" */;
+			buildConfigurationList = 83CBB9FA1A601CBA00E9B192 /* Build configuration list for PBXProject "WednesdayWaffle" */;
 			compatibilityVersion = "Xcode 3.2";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -185,7 +185,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				13B07F861A680F5B00A75B9A /* wednesdaywaffleapp */,
+				13B07F861A680F5B00A75B9A /* WednesdayWaffle */,
 			);
 		};
 /* End PBXProject section */
@@ -198,7 +198,7 @@
 				BB2F792D24A3F905000567C9 /* Expo.plist in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */,
-				CC9B3C214F6011E143421235 /* PrivacyInfo.xcprivacy in Resources */,
+				41BB4927550E02F29EE22891 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -235,14 +235,32 @@
 			outputFileListPaths = (
 			);
 			outputPaths = (
-				"$(DERIVED_FILE_DIR)/Pods-wednesdaywaffleapp-checkManifestLockResult.txt",
+				"$(DERIVED_FILE_DIR)/Pods-WednesdayWaffle-checkManifestLockResult.txt",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 			showEnvVarsInLog = 0;
 		};
-		0C70E27F2C8CAAE21486BDDC /* [Expo] Configure project */ = {
+		10E0734D42AD5AD5F18E7A05 /* [CP] Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-WednesdayWaffle/Pods-WednesdayWaffle-frameworks.sh",
+				"${PODS_XCFRAMEWORKS_BUILD_DIR}/hermes-engine/Pre-built/hermes.framework/hermes",
+			);
+			name = "[CP] Embed Pods Frameworks";
+			outputPaths = (
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/hermes.framework",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-WednesdayWaffle/Pods-WednesdayWaffle-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		40E2CFA6242C51D382D10457 /* [Expo] Configure project */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
@@ -259,7 +277,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# This script configures Expo modules and generates the modules provider file.\nbash -l -c \"./Pods/Target\\ Support\\ Files/Pods-wednesdaywaffleapp/expo-configure-project.sh\"\n";
+			shellScript = "# This script configures Expo modules and generates the modules provider file.\nbash -l -c \"./Pods/Target\\ Support\\ Files/Pods-WednesdayWaffle/expo-configure-project.sh\"\n";
 		};
 		800E24972A6A228C8D4807E9 /* [CP] Copy Pods Resources */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -267,7 +285,7 @@
 			files = (
 			);
 			inputPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-wednesdaywaffleapp/Pods-wednesdaywaffleapp-resources.sh",
+				"${PODS_ROOT}/Target Support Files/Pods-WednesdayWaffle/Pods-WednesdayWaffle-resources.sh",
 				"${PODS_CONFIGURATION_BUILD_DIR}/EXApplication/ExpoApplication_privacy.bundle",
 				"${PODS_CONFIGURATION_BUILD_DIR}/EXConstants/EXConstants.bundle",
 				"${PODS_CONFIGURATION_BUILD_DIR}/EXConstants/ExpoConstants_privacy.bundle",
@@ -308,25 +326,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-wednesdaywaffleapp/Pods-wednesdaywaffleapp-resources.sh\"\n";
-			showEnvVarsInLog = 0;
-		};
-		EF2A4CAA80EA1791E86C4E97 /* [CP] Embed Pods Frameworks */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-wednesdaywaffleapp/Pods-wednesdaywaffleapp-frameworks.sh",
-				"${PODS_XCFRAMEWORKS_BUILD_DIR}/hermes-engine/Pre-built/hermes.framework/hermes",
-			);
-			name = "[CP] Embed Pods Frameworks";
-			outputPaths = (
-				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/hermes.framework",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-wednesdaywaffleapp/Pods-wednesdaywaffleapp-frameworks.sh\"\n";
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-WednesdayWaffle/Pods-WednesdayWaffle-resources.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */
@@ -337,7 +337,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */,
-				D85A1031F5A8BA388A53F2A7 /* ExpoModulesProvider.swift in Sources */,
+				1CF96EEABB0D0A912684DA1B /* ExpoModulesProvider.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -346,21 +346,18 @@
 /* Begin XCBuildConfiguration section */
 		13B07F941A680F5B00A75B9A /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = D836CD5988344D70CEA4C3D2 /* Pods-wednesdaywaffleapp.debug.xcconfig */;
+			baseConfigurationReference = 6C2C32400D59884CE02045B7 /* Pods-WednesdayWaffle.debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
-				CODE_SIGN_ENTITLEMENTS = wednesdaywaffleapp/wednesdaywaffleapp.entitlements;
-				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_ENTITLEMENTS = WednesdayWaffle/WednesdayWaffle.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = WV24HLV3W4;
 				ENABLE_BITCODE = NO;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"$(inherited)",
 					"FB_SONARKIT_ENABLED=1",
 				);
-				INFOPLIST_FILE = wednesdaywaffleapp/Info.plist;
+				INFOPLIST_FILE = WednesdayWaffle/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -374,27 +371,27 @@
 				);
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_DEBUG";
 				PRODUCT_BUNDLE_IDENTIFIER = "com.baibhavbista.wednesday-waffle-app";
-				PRODUCT_NAME = wednesdaywaffleapp;
-				SWIFT_OBJC_BRIDGING_HEADER = "wednesdaywaffleapp/wednesdaywaffleapp-Bridging-Header.h";
+				PRODUCT_NAME = WednesdayWaffle;
+				SWIFT_OBJC_BRIDGING_HEADER = "WednesdayWaffle/WednesdayWaffle-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VERSIONING_SYSTEM = "apple-generic";
+				DEVELOPMENT_TEAM = "WV24HLV3W4";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 			};
 			name = Debug;
 		};
 		13B07F951A680F5B00A75B9A /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 207164D4E0FF71CF592937BB /* Pods-wednesdaywaffleapp.release.xcconfig */;
+			baseConfigurationReference = B650EA1CEBB782DF785282CD /* Pods-WednesdayWaffle.release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
-				CODE_SIGN_ENTITLEMENTS = wednesdaywaffleapp/wednesdaywaffleapp.entitlements;
-				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_ENTITLEMENTS = WednesdayWaffle/WednesdayWaffle.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = WV24HLV3W4;
-				INFOPLIST_FILE = wednesdaywaffleapp/Info.plist;
+				INFOPLIST_FILE = WednesdayWaffle/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -408,11 +405,14 @@
 				);
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_RELEASE";
 				PRODUCT_BUNDLE_IDENTIFIER = "com.baibhavbista.wednesday-waffle-app";
-				PRODUCT_NAME = wednesdaywaffleapp;
-				SWIFT_OBJC_BRIDGING_HEADER = "wednesdaywaffleapp/wednesdaywaffleapp-Bridging-Header.h";
+				PRODUCT_NAME = WednesdayWaffle;
+				SWIFT_OBJC_BRIDGING_HEADER = "WednesdayWaffle/WednesdayWaffle-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VERSIONING_SYSTEM = "apple-generic";
+				DEVELOPMENT_TEAM = "WV24HLV3W4";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 			};
 			name = Release;
 		};
@@ -543,7 +543,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "wednesdaywaffleapp" */ = {
+		13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "WednesdayWaffle" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				13B07F941A680F5B00A75B9A /* Debug */,
@@ -552,7 +552,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		83CBB9FA1A601CBA00E9B192 /* Build configuration list for PBXProject "wednesdaywaffleapp" */ = {
+		83CBB9FA1A601CBA00E9B192 /* Build configuration list for PBXProject "WednesdayWaffle" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				83CBBA201A601CBA00E9B192 /* Debug */,

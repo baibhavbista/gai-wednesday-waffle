@@ -7,7 +7,7 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>$(DEVELOPMENT_LANGUAGE)</string>
     <key>CFBundleDisplayName</key>
-    <string>wednesday-waffle-app</string>
+    <string>Wednesday Waffle</string>
     <key>CFBundleExecutable</key>
     <string>$(EXECUTABLE_NAME)</string>
     <key>CFBundleIdentifier</key>
@@ -52,9 +52,9 @@
       <true/>
     </dict>
     <key>NSCameraUsageDescription</key>
-    <string>Wednesday Waffle needs camera access to record your weekly video updates to share with friends.</string>
+    <string>Wednesday Waffle needs camera access to record your video updates.</string>
     <key>NSMicrophoneUsageDescription</key>
-    <string>Wednesday Waffle needs microphone access to record audio for your video waffles and generate AI-powered captions.</string>
+    <string>Wednesday Waffle needs microphone access to record audio for your waffles.</string>
     <key>NSPhotoLibraryAddUsageDescription</key>
     <string>Wednesday Waffle needs permission to save recorded videos to your photo library.</string>
     <key>NSPhotoLibraryUsageDescription</key>

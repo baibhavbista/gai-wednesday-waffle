@@ -59,19 +59,21 @@
 - [x] **User profile management**
 - [x] **Multi-group video sharing**
 - [x] **Retention types** (view-once, 7-day, keep-forever)
+- [x] **Wednesday Nudge System** (Local notifications with smart cancellation)
+- [x] **Notification permissions** (Requested during profile setup)
+- [x] **Notification settings** (Toggle in profile with permission handling)
 
 ### 🔄 **In Progress**
 - [ ] AI features implementation (Prompt-Me-Please, Caption Genie, Catch-Up Recap)
-- [x] Push notification system → **Wednesday Nudge local notifications**
 - [ ] RAG infrastructure with vector embeddings
 
 ### 🎯 **User Stories (MVP)**
-1. **US-1**: Capture & post waffle *(UI complete, backend integration needed)*
-2. **US-2**: Wednesday nudger push notifications
-3. **US-3**: Prompt-me-please AI suggestions
-4. **US-4**: Caption Genie AI captions
-5. **US-5**: Catch-up recap AI summaries 
-6. **US-6**: Share across multiple groups 
+1. **US-1**: Capture & post waffle ✅ *(Complete with full backend integration)*
+2. **US-2**: Wednesday nudger push notifications ✅ *(Local notifications implemented)*
+3. **US-3**: Prompt-me-please AI suggestions *(In progress)*
+4. **US-4**: Caption Genie AI captions *(In progress)*
+5. **US-5**: Catch-up recap AI summaries *(Pending)*
+6. **US-6**: Share across multiple groups ✅ *(Complete)* 
 
 ## 📁 Project Structure
 
@@ -103,7 +105,8 @@ wednesday-waffle/
 │   ├── database-service.ts      # CRUD operations
 │   ├── storage-service.ts       # File upload/download
 │   ├── profile-service.ts       # User management
-│   └── settings-service.ts      # App preferences
+│   ├── settings-service.ts      # App preferences
+│   └── notification-service.ts  # Wednesday nudge system
 ├── render-backend/              # Node.js backend for AI processing
 │   └── ...
 ├── store/                       # Zustand state management
@@ -114,7 +117,8 @@ wednesday-waffle/
     ├── 02-groups-table.sql      # Groups & invite codes
     ├── 03-group-members-table.sql # Memberships
     ├── 04-waffles-table.sql     # Messages/waffles
-    └── ...                      # 11+ migration files
+    ├── 17-add-notification-fields.sql # Notification system
+    └── ...                      # 17+ migration files
 ```
 
 ## 🏗 Installation & Setup
@@ -164,7 +168,6 @@ EXPO_PUBLIC_CAPTION_SERVICE_URL=captions-route-for-render-backend # Needed to ho
 -- Profiles table (extends auth.users)
 profiles (
   id, name, avatar_url, created_at, updated_at,
-  -- Notification fields (to be added):
   notifications_enabled, notification_permission_requested, last_waffle_week
 )
 
@@ -216,21 +219,24 @@ graph TD
 - **Real-time ready**: Live messaging and group updates via Supabase Realtime
 - **Demo-ready**: Core features fully functional for walkthrough
 - **Mobile-first**: Optimized for iOS/Android with web support
+- **Notification system**: Local notifications with smart week-based tracking
+- **Production-ready**: ~85% complete, missing only AI features
 
 ## 🎯 Success Metrics
 
-- **Feature completeness**: ✅ Core messaging & groups implemented (~70% complete)
+- **Feature completeness**: ✅ Core messaging, groups & notifications implemented (~85% complete)
 - **Performance**: AI endpoints P95 latency <3s (pending implementation)
 - **Demo**: ✅ Core features stable for walkthrough
 - **Bonus**: ✅ Multi-group sharing delivered
+- **Notifications**: ✅ Wednesday nudge system fully functional
 
 ## 🚧 Next Steps
 
-1. **Wednesday Nudge System**: Complete local notification implementation
-2. **AI Implementation**: Build Edge Functions for STT and RAG
-3. **Testing & Polish**: Ensure <3s AI response times
-4. **Demo Preparation**: Record walkthrough video
-5. **Performance Optimization**: Fine-tune real-time features
+1. **AI Implementation**: Build Edge Functions for STT and RAG
+2. **Testing & Polish**: Ensure <3s AI response times
+3. **Demo Preparation**: Record walkthrough video
+4. **Performance Optimization**: Fine-tune real-time features
+5. **Production Deployment**: Configure production environment
 
 ## 🤝 Contributing
 
@@ -240,7 +246,7 @@ This is currently a solo project built for a specific use case, but open to feed
 
 Private project - All rights reserved.
 
-## 🔔 Wednesday Nudge System (In Development)
+## 🔔 Wednesday Nudge System ✅
 
 ### **Implementation Approach: Local Notifications**
 We chose local notifications over push notifications for simplicity and reliability:
@@ -261,7 +267,8 @@ We chose local notifications over push notifications for simplicity and reliabil
 - Calendar week based (Sunday-Saturday)
 - One post to any group counts for the week
 - Simple on/off toggle in settings
-- Opt-out by default (notifications enabled unless user disables)
+- Opt-in during profile setup (with graceful permission handling)
+- Test notifications available in dev mode (30s/60s delays)
 
 ### **Technical Details**
 - Uses `expo-notifications` for local scheduling
