@@ -735,47 +735,59 @@ function parseTemporalQuery(query) {
 }
 
 // Helper: Find match positions in transcript
-async function findMatchPositions(transcript, queryEmbedding) {
+async function findMatchPositions(transcript, queryEmbedding, searchQuery) {
   try {
-    // Split transcript into sentences
-    const sentences = transcript.match(/[^.!?]+[.!?]+/g) || [transcript];
+    // Simple approach: Look for keywords from the search query
+    const queryWords = searchQuery.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+    const transcriptLower = transcript.toLowerCase();
     
-    // For performance, only process first 10 sentences
-    const sentencesToProcess = sentences.slice(0, 10);
+    const matches = [];
     
-    // Generate embeddings for sentences
-    const embeddingResponse = await openai.embeddings.create({
-      model: 'text-embedding-3-small',
-      input: sentencesToProcess,
-    });
+    // Find positions of query words in transcript
+    for (const word of queryWords) {
+      let position = transcriptLower.indexOf(word);
+      while (position !== -1) {
+        // Find sentence boundaries around this match
+        let sentenceStart = position;
+        let sentenceEnd = position + word.length;
+        
+        // Expand to sentence boundaries
+        while (sentenceStart > 0 && !'.!?'.includes(transcript[sentenceStart - 1])) {
+          sentenceStart--;
+        }
+        while (sentenceEnd < transcript.length && !'.!?'.includes(transcript[sentenceEnd])) {
+          sentenceEnd++;
+        }
+        
+        matches.push({
+          position: sentenceStart,
+          length: sentenceEnd - sentenceStart,
+          timestamp: Math.floor((position / transcript.length) * 180) // Still rough estimate
+        });
+        
+        // Look for next occurrence
+        position = transcriptLower.indexOf(word, position + 1);
+      }
+    }
     
-    // Calculate similarities
-    const matches = sentencesToProcess.map((sentence, idx) => {
-      const similarity = cosineSimilarity(
-        queryEmbedding,
-        embeddingResponse.data[idx].embedding
-      );
-      
-      const position = transcript.indexOf(sentence);
-      
-      return {
-        sentence: sentence.trim(),
-        similarity,
-        position,
-        timestamp: Math.floor((position / transcript.length) * 180) // Rough estimate
-      };
-    });
+    // Remove duplicates and sort by position
+    const uniqueMatches = matches
+      .filter((match, index, self) => 
+        index === self.findIndex(m => m.position === match.position)
+      )
+      .sort((a, b) => a.position - b.position)
+      .slice(0, 3);
     
-    // Return matches above threshold, sorted by similarity
-    return matches
-      .filter(m => m.similarity > 0.7)
-      .sort((a, b) => b.similarity - a.similarity)
-      .slice(0, 3)
-      .map(m => ({
-        position: m.position,
-        length: m.sentence.length,
-        timestamp: m.timestamp
-      }));
+    // If no keyword matches found, return beginning of transcript
+    if (uniqueMatches.length === 0) {
+      return [{
+        position: 0,
+        length: Math.min(200, transcript.length),
+        timestamp: 0
+      }];
+    }
+    
+    return uniqueMatches;
   } catch (error) {
     console.error('Error finding match positions:', error);
     // Return a default match at the beginning
@@ -1030,12 +1042,7 @@ app.post('/api/search/waffles', authenticateToken, async (req, res) => {
     // Enhance results with match positions
     const enhancedResults = await Promise.all(
       results.map(async (result) => {
-        // Find match positions in transcript
-        const matches = await findMatchPositions(result.transcript, queryEmbedding);
-        
-        // Get the best match for highlighting
-        const bestMatch = matches[0] || { position: 0, length: 100, timestamp: 0 };
-        
+        // Simplified - no more match position calculation
         // Generate thumbnail URL (mock for now)
         const thumbnailUrl = `https://picsum.photos/seed/${result.id}/400/240`;
         
@@ -1052,12 +1059,9 @@ app.post('/api/search/waffles', authenticateToken, async (req, res) => {
           videoUrl: result.content_url,
           thumbnailUrl,
           transcript: result.transcript,
-          matchStart: bestMatch.position,
-          matchEnd: bestMatch.position + bestMatch.length,
-          timestamp: bestMatch.timestamp,
           videoDuration,
           createdAt: result.created_at,
-          matchPositions: matches.map(m => m.timestamp),
+          // Simplified - no match positions
         };
       })
     );
@@ -1082,15 +1086,38 @@ app.post('/api/search/waffles', authenticateToken, async (req, res) => {
       console.error('[Search] Failed to log search history:', err);
     }
     
-    console.log('[Search] Sending successful response with', enhancedResults.length, 'results');
+    console.log('[Search] Sending immediate response with', enhancedResults.length, 'results');
     
-    // Send response
+    // Generate a unique search ID
+    const searchId = `search-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Send immediate response with a pending AI answer
     res.json({
       results: enhancedResults,
       totalCount,
       suggestions: suggestions.slice(0, 3),
-      processingStatus: 'complete'
+      processingStatus: 'complete',
+      searchId, // Include search ID for SSE connection
+      aiAnswer: {
+        status: 'pending',
+        text: null
+      }
     });
+    
+    // Register AI answer task
+    const taskKey = `${userId}:${searchId}`;
+    aiAnswerTasks.set(taskKey, {
+      status: 'pending',
+      clients: [],
+      query,
+      results,
+    });
+    
+    // Generate AI answer asynchronously
+    if (results.length > 0) {
+      generateAIAnswerSSE(query, results, userId, searchId)
+        .catch(err => console.error('[Search] Failed to generate AI answer:', err));
+    }
     
   } catch (error) {
     console.error('[Search] ==================== SEARCH ERROR ====================');
@@ -1118,3 +1145,177 @@ app.post('/api/search/waffles', authenticateToken, async (req, res) => {
 app.listen(port, () => {
   console.log(`Backend service listening on port ${port}`);
 });
+
+/* =============================
+   SSE for AI Answers
+   ============================= */
+
+// Store active AI generation tasks
+const aiAnswerTasks = new Map();
+
+// SSE endpoint for streaming AI answers
+app.get('/api/search/ai-stream/:searchId', authenticateToken, (req, res) => {
+  const { searchId } = req.params;
+  const userId = req.user.sub;
+  
+  console.log(`[SSE] Client connected for search ${searchId}`);
+  
+  // Set up SSE headers
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'Access-Control-Allow-Origin': '*',
+  });
+  
+  // Send initial connection message
+  res.write(`data: ${JSON.stringify({ status: 'connected' })}\n\n`);
+  
+  // Check if we have a task for this search
+  const taskKey = `${userId}:${searchId}`;
+  const task = aiAnswerTasks.get(taskKey);
+  
+  if (task) {
+    if (task.status === 'complete') {
+      // Send the answer immediately if already generated
+      res.write(`data: ${JSON.stringify({ 
+        status: 'complete', 
+        text: task.answer 
+      })}\n\n`);
+      res.end();
+      aiAnswerTasks.delete(taskKey);
+    } else {
+      // Wait for the answer to be generated
+      task.clients.push(res);
+    }
+  } else {
+    // No task found - might be an error
+    res.write(`data: ${JSON.stringify({ 
+      status: 'error', 
+      text: 'Search not found' 
+    })}\n\n`);
+    res.end();
+  }
+  
+  // Clean up on client disconnect
+  req.on('close', () => {
+    console.log(`[SSE] Client disconnected for search ${searchId}`);
+    if (task && task.clients) {
+      task.clients = task.clients.filter(client => client !== res);
+    }
+  });
+});
+
+/* =============================
+   AI Answer Generation with SSE
+   ============================= */
+
+async function generateAIAnswerSSE(query, searchResults, userId, searchId) {
+  console.log('[AI Answer] Starting generation for query:', query);
+  
+  const taskKey = `${userId}:${searchId}`;
+  const task = aiAnswerTasks.get(taskKey);
+  
+  if (!task) {
+    console.error('[AI Answer] Task not found for:', taskKey);
+    return;
+  }
+  
+  try {
+    // Prepare context from top results
+    const topResults = searchResults.slice(0, 5);
+    const context = topResults.map((result, idx) => 
+      `Video ${idx + 1} (${result.user_name}, ${new Date(result.created_at).toLocaleDateString()}): "${result.transcript.slice(0, 500)}..."`
+    ).join('\n\n');
+    
+    // Create prompt
+    const prompt = `You are a helpful AI assistant analyzing video transcripts from a private friend group. Based on the following video transcripts, provide a concise, friendly answer to the user's search query.
+
+Search Query: "${query}"
+
+Video Transcripts:
+${context}
+
+Instructions:
+- Synthesize information across all relevant videos
+- Be conversational and friendly (this is for a friend group app)
+- Keep the answer concise (2-3 sentences max)
+- Reference specific people or videos when relevant
+- If the videos don't contain relevant information, say so politely`;
+
+    console.log('[AI Answer] Sending to GPT-4o with streaming...');
+    
+    // Use streaming for progressive updates
+    const stream = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [{ role: 'system', content: prompt }],
+      temperature: 0.7,
+      max_tokens: 150,
+      stream: true,
+    });
+    
+    let fullAnswer = '';
+    
+    // Process stream chunks
+    for await (const chunk of stream) {
+      const content = chunk.choices[0]?.delta?.content || '';
+      if (content) {
+        fullAnswer += content;
+        
+        // Send update to all connected clients
+        task.clients.forEach(client => {
+          try {
+            client.write(`data: ${JSON.stringify({ 
+              status: 'streaming', 
+              text: fullAnswer 
+            })}\n\n`);
+          } catch (err) {
+            console.error('[SSE] Failed to send to client:', err);
+          }
+        });
+      }
+    }
+    
+    console.log('[AI Answer] Generation complete:', fullAnswer);
+    
+    // Send final answer to all clients
+    task.clients.forEach(client => {
+      try {
+        client.write(`data: ${JSON.stringify({ 
+          status: 'complete', 
+          text: fullAnswer 
+        })}\n\n`);
+        client.end();
+      } catch (err) {
+        console.error('[SSE] Failed to send final answer:', err);
+      }
+    });
+    
+    // Update task status
+    task.status = 'complete';
+    task.answer = fullAnswer;
+    
+    // Clean up after 5 minutes
+    setTimeout(() => {
+      aiAnswerTasks.delete(taskKey);
+    }, 5 * 60 * 1000);
+    
+  } catch (error) {
+    console.error('[AI Answer] Generation failed:', error);
+    
+    // Notify clients of error
+    task.clients.forEach(client => {
+      try {
+        client.write(`data: ${JSON.stringify({ 
+          status: 'error', 
+          text: 'Failed to generate AI summary' 
+        })}\n\n`);
+        client.end();
+      } catch (err) {
+        console.error('[SSE] Failed to send error:', err);
+      }
+    });
+    
+    aiAnswerTasks.delete(taskKey);
+  }
+}
