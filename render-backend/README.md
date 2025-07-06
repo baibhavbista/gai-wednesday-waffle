@@ -58,6 +58,28 @@ Generates conversation prompts based on recent group activity
 - **Input**: `{ group_id, user_uid }`
 - **Output**: `{ suggestions: string[] }`
 
+### `GET /api/catchup/:groupId` (Protected)
+Generates AI-powered catch-up summary of recent group activity
+- **Auth**: Bearer token (Supabase JWT)
+- **Path Params**: `groupId` - The group to summarize
+- **Query Params**: `days` (optional, default: 10, max: 30)
+- **Output**: 
+  ```json
+  {
+    "summary": "Josh and Sarah have been sharing their weekend adventures...",
+    "waffleCount": 15,
+    "days": 10,
+    "cached": false
+  }
+  ```
+- **Features**:
+  - Fetches waffles from the specified time period
+  - Chooses shortest content: caption → ai_recap → transcript
+  - Generates detailed 4-6 sentence summary (1-2 paragraphs) with GPT-4o
+  - Includes specific names, activities, and memorable moments
+  - 2-hour cache to reduce API calls
+  - Handles empty periods gracefully
+
 ### `POST /api/search/waffles` (Protected)
 Semantic search across waffle transcripts with AI-powered answers
 - **Auth**: Bearer token (Supabase JWT)
@@ -191,7 +213,11 @@ User App → Supabase Auth → Render Backend → OpenAI APIs
    - **AI enrichment**: Generate embeddings → Create AI recap
    - **Store everything**: Duration, thumbnail URL, transcript, embeddings, recap → DB
 3. **Conversation Starters**: Fetch recent transcripts → GPT-4o → 2 contextual prompts
-4. **Search with AI**: 
+4. **Catch-Up Summary**: 
+   - Fetch last N days of waffles → Select shortest content per waffle
+   - Format chronologically with timestamps → Send to GPT-4o
+   - Generate detailed 4-6 sentence summary with names & specific moments → Cache for 2 hours
+5. **Search with AI**: 
    - **Immediate**: Query → Parse temporal → Generate embedding → Vector search → Return results + searchId
    - **Async**: Generate AI answer → Stream via SSE → Progressive display in UI
 

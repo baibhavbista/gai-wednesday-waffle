@@ -255,4 +255,62 @@ export async function hasWaffleRecap(contentUrl: string): Promise<boolean> {
     console.error('Error checking recap availability:', error);
     return false;
   }
+}
+
+export interface CatchUpSummaryResponse {
+  summary: string;
+  cached: boolean;
+  waffleCount: number;
+  days: number;
+}
+
+/**
+ * Fetch AI-generated catch-up summary for a group
+ * @param groupId The group ID to get the summary for
+ * @param days Optional number of days to look back (default: 10, max: 30)
+ * @returns Promise resolving to catch-up summary data
+ */
+export async function getCatchUpSummary(
+  groupId: string,
+  days: number = 10
+): Promise<CatchUpSummaryResponse> {
+  const serviceUrl = process.env.EXPO_PUBLIC_CAPTION_SERVICE_URL;
+  if (!serviceUrl) {
+    throw new Error('Backend service URL is not defined in environment variables.');
+  }
+
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  const token = session?.access_token;
+
+  if (!token) {
+    throw new Error('User is not authenticated.');
+  }
+
+  try {
+    console.log(`[CatchUp] Fetching summary for group ${groupId}, last ${days} days`);
+    
+    const response = await fetch(`${serviceUrl}/api/catchup/${groupId}?days=${days}`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('[CatchUp] API error:', errorData);
+      throw new Error(errorData.error || 'Failed to get catch-up summary.');
+    }
+
+    const data = await response.json();
+    console.log('[CatchUp] Received summary:', data);
+    
+    return data as CatchUpSummaryResponse;
+  } catch (error) {
+    console.error('[CatchUp] Error fetching catch-up summary:', error);
+    throw error;
+  }
 } 

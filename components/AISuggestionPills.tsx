@@ -7,8 +7,11 @@ import {
   ActivityIndicator,
   Animated,
   Dimensions,
+  Alert,
+  ScrollView,
 } from 'react-native';
 import { BarChart3, Lightbulb, Search } from 'lucide-react-native';
+import { getCatchUpSummary } from '../lib/ai-service';
 
 interface AISuggestionPillsProps {
   groupId: string;
@@ -30,6 +33,11 @@ export default function AISuggestionPills({
   const [findLoading, setFindLoading] = useState(false);
   const [showRecapModal, setShowRecapModal] = useState(false);
   const [catchUpSummary, setCatchUpSummary] = useState<string | null>(null);
+  const [catchUpMetadata, setCatchUpMetadata] = useState<{ 
+    waffleCount: number; 
+    days: number; 
+    cached: boolean; 
+  } | null>(null);
   
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -89,16 +97,25 @@ export default function AISuggestionPills({
     setCatchUpLoading(true);
 
     try {
-      // Mock API call - replace with real implementation
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      // Fetch catch-up summary from backend
+      const response = await getCatchUpSummary(groupId, 10);
       
-      // Mock summary data
-      const mockSummary = `This week in ${groupId}: Sarah shared her morning coffee ritual, Tom posted his weekend hike adventures, and Emma celebrated her new job! The group has been active with 12 waffles shared.`;
-      
-      setCatchUpSummary(mockSummary);
+      setCatchUpSummary(response.summary);
+      setCatchUpMetadata({
+        waffleCount: response.waffleCount,
+        days: response.days,
+        cached: response.cached,
+      });
       setShowRecapModal(true);
     } catch (error) {
       console.error('Failed to get catch up summary:', error);
+      
+      // Show error alert
+      Alert.alert(
+        'Unable to Generate Summary',
+        'Could not fetch the catch-up summary. Please try again later.',
+        [{ text: 'OK' }]
+      );
     } finally {
       setCatchUpLoading(false);
     }
@@ -259,11 +276,38 @@ export default function AISuggestionPills({
           activeOpacity={1}
         >
           <View style={styles.recapModal}>
-            <Text style={styles.recapTitle}>Catch Up Summary</Text>
-            <Text style={styles.recapText}>{catchUpSummary}</Text>
+            <View style={styles.recapHeader}>
+              <BarChart3 size={20} color="#F97316" />
+              <Text style={styles.recapTitle}>Catch Up Summary</Text>
+            </View>
+            
+            {catchUpMetadata && (
+              <View style={styles.recapMetadata}>
+                <Text style={styles.recapMetaText}>
+                  {catchUpMetadata.waffleCount > 0
+                    ? `${catchUpMetadata.waffleCount} waffle${catchUpMetadata.waffleCount !== 1 ? 's' : ''} from the last ${catchUpMetadata.days} days`
+                    : `Last ${catchUpMetadata.days} days`}
+                </Text>
+                {/* {catchUpMetadata.cached && (
+                  <Text style={styles.recapCachedText}>• Cached</Text>
+                )} */}
+              </View>
+            )}
+            
+            <ScrollView 
+              style={styles.recapScrollView}
+              showsVerticalScrollIndicator={false}
+            >
+              <Text style={styles.recapText}>{catchUpSummary}</Text>
+            </ScrollView>
+            
             <TouchableOpacity
               style={styles.recapCloseButton}
-              onPress={() => setShowRecapModal(false)}
+              onPress={() => {
+                setShowRecapModal(false);
+                setCatchUpSummary(null);
+                setCatchUpMetadata(null);
+              }}
             >
               <Text style={styles.recapCloseText}>Got it!</Text>
             </TouchableOpacity>
@@ -325,6 +369,7 @@ const styles = StyleSheet.create({
     padding: 24,
     marginHorizontal: 20,
     maxWidth: 400,
+    maxHeight: '80%',
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -334,19 +379,45 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 8,
   },
+  recapHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+    gap: 8,
+  },
   recapTitle: {
     fontSize: 18,
     fontFamily: 'Poppins-SemiBold',
     color: '#1F2937',
-    marginBottom: 12,
-    textAlign: 'center',
+  },
+  recapMetadata: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+    gap: 8,
+  },
+  recapMetaText: {
+    fontSize: 12,
+    fontFamily: 'Inter-Regular',
+    color: '#6B7280',
+  },
+  recapCachedText: {
+    fontSize: 12,
+    fontFamily: 'Inter-Regular',
+    color: '#9CA3AF',
+  },
+  recapScrollView: {
+    maxHeight: 300,
+    marginBottom: 20,
   },
   recapText: {
-    fontSize: 14,
+    fontSize: 15,
     fontFamily: 'Inter-Regular',
-    color: '#4B5563',
-    lineHeight: 20,
-    marginBottom: 20,
+    color: '#374151',
+    lineHeight: 22,
+    textAlign: 'left',
   },
   recapCloseButton: {
     backgroundColor: '#F97316',
