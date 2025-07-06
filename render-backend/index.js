@@ -15,6 +15,7 @@ const { Pool } = require('pg');
 const { URL } = require('url'); // Use Node.js's built-in URL parser
 const { zodResponseFormat } = require("openai/helpers/zod");
 const { z } = require("zod");
+const cors = require('cors');
 
 const Suggestions = z.object({
   suggestions: z.array(z.string()),
@@ -24,6 +25,44 @@ const Suggestions = z.object({
 const app = express();
 const port = process.env.PORT || 3000;
 app.use(express.json()); // Middleware to parse JSON bodies, needed for webhooks
+
+// CORS configuration
+app.use(cors({
+  origin: function(origin, callback) {
+    // Allow requests with no origin (mobile apps, Postman, etc)
+    if (!origin) {
+      console.log('[CORS] Allowing request with no origin');
+      return callback(null, true);
+    }
+    
+    // Log the origin for debugging
+    console.log('[CORS] Request from origin:', origin);
+    
+    // Allow all origins in development
+    // In production, you should restrict this to your actual domains
+    callback(null, true);
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['Content-Length', 'X-Request-Id'],
+}));
+
+// Request logging middleware
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  console.log('[Request Headers]:', JSON.stringify(req.headers, null, 2));
+  if (req.body && Object.keys(req.body).length > 0) {
+    console.log('[Request Body]:', JSON.stringify(req.body, null, 2));
+  }
+  next();
+});
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  console.log('[Health Check] OK');
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
 
 // Initialize OpenAI client
 const openai = new OpenAI({
@@ -750,6 +789,10 @@ async function findMatchPositions(transcript, queryEmbedding) {
 
 // Main search endpoint
 app.post('/api/search/waffles', authenticateToken, async (req, res) => {
+  console.log('[Search] ==================== NEW SEARCH REQUEST ====================');
+  console.log('[Search] Headers:', JSON.stringify(req.headers, null, 2));
+  console.log('[Search] User from token:', req.user);
+  
   const { 
     query, 
     filters = {}, 
@@ -757,16 +800,19 @@ app.post('/api/search/waffles', authenticateToken, async (req, res) => {
     offset = 0 
   } = req.body;
   
-  console.log('[Search] Request:', { query, filters, limit, offset });
+  console.log('[Search] Request body:', JSON.stringify({ query, filters, limit, offset }, null, 2));
   
   // Validate request
   if (!query || query.trim().length < 2) {
+    console.log('[Search] Invalid query - too short:', query);
     return res.status(400).json({ 
       error: 'Query must be at least 2 characters' 
     });
   }
   
   const userId = req.user.sub;
+  console.log('[Search] User ID from token:', userId);
+  
   let dbClient;
   
   try {
@@ -780,42 +826,56 @@ app.post('/api/search/waffles', authenticateToken, async (req, res) => {
     
     if (searchCache.has(cacheKey)) {
       queryEmbedding = searchCache.get(cacheKey).embedding;
-      console.log('[Search] Using cached embedding');
+      console.log('[Search] Using cached embedding for query:', cleanQuery);
     } else {
       // Generate embedding for search query
-      console.log('[Search] Generating new embedding');
-      const embeddingResponse = await openai.embeddings.create({
-        model: 'text-embedding-3-small',
-        input: cleanQuery,
-      });
-      
-      queryEmbedding = embeddingResponse.data[0].embedding;
-      searchCache.set(cacheKey, {
-        embedding: queryEmbedding,
-        timestamp: Date.now()
-      });
+      console.log('[Search] Generating new embedding for query:', cleanQuery);
+      try {
+        const embeddingResponse = await openai.embeddings.create({
+          model: 'text-embedding-3-small',
+          input: cleanQuery,
+        });
+        
+        queryEmbedding = embeddingResponse.data[0].embedding;
+        console.log('[Search] Successfully generated embedding, length:', queryEmbedding.length);
+        
+        searchCache.set(cacheKey, {
+          embedding: queryEmbedding,
+          timestamp: Date.now()
+        });
+      } catch (openaiError) {
+        console.error('[Search] OpenAI embedding error:', openaiError);
+        throw new Error('Failed to generate search embedding');
+      }
     }
     
     // Convert embedding to pgvector format
     const embeddingLiteral = '[' + queryEmbedding.join(',') + ']';
+    console.log('[Search] Embedding literal length:', embeddingLiteral.length);
     
     // Connect to database
+    console.log('[Search] Connecting to database...');
     dbClient = await pool.connect();
+    console.log('[Search] Database connected');
     
     // Build filters
     const filterConditions = [];
     const params = [userId, embeddingLiteral, limit, offset];
     let paramIndex = 5;
     
+    console.log('[Search] Building filters...');
+    
     if (filters.groupIds?.length > 0) {
       filterConditions.push(`w.group_id = ANY($${paramIndex})`);
       params.push(filters.groupIds);
+      console.log('[Search] Added group filter:', filters.groupIds);
       paramIndex++;
     }
     
     if (filters.userIds?.length > 0) {
       filterConditions.push(`w.user_id = ANY($${paramIndex})`);
       params.push(filters.userIds);
+      console.log('[Search] Added user filter:', filters.userIds);
       paramIndex++;
     }
     
@@ -824,11 +884,13 @@ app.post('/api/search/waffles', authenticateToken, async (req, res) => {
       if (range.start) {
         filterConditions.push(`w.created_at >= $${paramIndex}`);
         params.push(range.start);
+        console.log('[Search] Added start date filter:', range.start);
         paramIndex++;
       }
       if (range.end) {
         filterConditions.push(`w.created_at <= $${paramIndex}`);
         params.push(range.end);
+        console.log('[Search] Added end date filter:', range.end);
         paramIndex++;
       }
     }
@@ -836,6 +898,7 @@ app.post('/api/search/waffles', authenticateToken, async (req, res) => {
     if (filters.mediaType && filters.mediaType !== 'all') {
       filterConditions.push(`w.content_type = $${paramIndex}`);
       params.push(filters.mediaType);
+      console.log('[Search] Added media type filter:', filters.mediaType);
       paramIndex++;
     }
     
@@ -874,10 +937,31 @@ app.post('/api/search/waffles', authenticateToken, async (req, res) => {
       SELECT * FROM ranked_results;
     `;
     
-    console.log('[Search] Executing search query');
-    const { rows: results } = await dbClient.query(searchQuery, params);
+    console.log('[Search] Executing search query with params:', params.map((p, i) => `$${i + 1}: ${typeof p === 'string' && p.length > 50 ? p.substring(0, 50) + '...' : p}`));
     
-    console.log(`[Search] Found ${results.length} results`);
+    let results;
+    try {
+      const queryResult = await dbClient.query(searchQuery, params);
+      results = queryResult.rows;
+      console.log(`[Search] Query executed successfully, found ${results.length} results`);
+      
+      if (results.length > 0) {
+        console.log('[Search] First result sample:', {
+          id: results[0].id,
+          user_name: results[0].user_name,
+          group_name: results[0].group_name,
+          distance: results[0].distance,
+        });
+      }
+    } catch (queryError) {
+      console.error('[Search] Database query error:', queryError);
+      console.error('[Search] Query error details:', {
+        message: queryError.message,
+        code: queryError.code,
+        detail: queryError.detail,
+      });
+      throw new Error('Database search failed');
+    }
     
     // Get total count for pagination
     const countQuery = `
@@ -949,6 +1033,8 @@ app.post('/api/search/waffles', authenticateToken, async (req, res) => {
       console.error('[Search] Failed to log search history:', err);
     }
     
+    console.log('[Search] Sending successful response with', enhancedResults.length, 'results');
+    
     // Send response
     res.json({
       results: enhancedResults,
@@ -958,13 +1044,25 @@ app.post('/api/search/waffles', authenticateToken, async (req, res) => {
     });
     
   } catch (error) {
+    console.error('[Search] ==================== SEARCH ERROR ====================');
     console.error('[Search] Error:', error);
+    console.error('[Search] Error stack:', error.stack);
+    console.error('[Search] Error details:', {
+      message: error.message,
+      code: error.code,
+      detail: error.detail,
+    });
+    
     res.status(500).json({ 
       error: 'Search failed. Please try again.',
       details: error.message 
     });
   } finally {
-    if (dbClient) dbClient.release();
+    if (dbClient) {
+      dbClient.release();
+      console.log('[Search] Database connection released');
+    }
+    console.log('[Search] ==================== END SEARCH REQUEST ====================');
   }
 });
 
