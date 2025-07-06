@@ -41,6 +41,11 @@ export interface SearchResponse {
   totalCount: number;
   suggestions: string[];
   processingStatus: 'complete' | 'partial';
+  searchId?: string;
+  aiAnswer?: {
+    status: 'pending' | 'complete' | 'error';
+    text: string | null;
+  };
 }
 
 class SearchService {
@@ -283,6 +288,65 @@ class SearchService {
     } catch (error) {
       console.error('Failed to get recent searches:', error);
       return [];
+    }
+  }
+
+  /**
+   * Stream AI answer updates via SSE
+   */
+  async streamAIAnswer(
+    searchId: string, 
+    onUpdate: (data: { status: string; text?: string }) => void
+  ): Promise<() => void> {
+    try {
+      console.log('[SearchService] Starting SSE connection for search:', searchId);
+      
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error('Authentication required');
+      }
+      
+      // Use EventSource polyfill for React Native
+      const EventSource = require('react-native-sse').default;
+      
+      const eventSource = new EventSource(
+        `${SEARCH_API_URL}/api/search/ai-stream/${searchId}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+        }
+      );
+      
+      eventSource.addEventListener('message', (event: any) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log('[SearchService] SSE message:', data);
+          onUpdate(data);
+          
+          // Close connection if complete or error
+          if (data.status === 'complete' || data.status === 'error') {
+            eventSource.close();
+          }
+        } catch (error) {
+          console.error('[SearchService] Failed to parse SSE message:', error);
+        }
+      });
+      
+      eventSource.addEventListener('error', (error: any) => {
+        console.error('[SearchService] SSE error:', error);
+        onUpdate({ status: 'error', text: 'Connection lost' });
+        eventSource.close();
+      });
+      
+      // Return cleanup function
+      return () => {
+        console.log('[SearchService] Closing SSE connection');
+        eventSource.close();
+      };
+    } catch (error) {
+      console.error('[SearchService] Failed to start SSE:', error);
+      throw error;
     }
   }
 }

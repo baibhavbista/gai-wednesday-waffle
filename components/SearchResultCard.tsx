@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,9 @@ import {
   Dimensions,
 } from 'react-native';
 import { Play, MessageSquare, Share2 } from 'lucide-react-native';
+import { useRouter } from 'expo-router';
+import { getVideoThumbnail, isValidThumbnailUrl } from '@/lib/thumbnail-utils';
+import VideoModal from './VideoModal';
 
 const { width } = Dimensions.get('window');
 
@@ -21,23 +24,47 @@ interface SearchResult {
   videoUrl: string;
   thumbnailUrl: string;
   transcript: string;
-  matchStart: number;
-  matchEnd: number;
-  timestamp: number;
   videoDuration: number;
   createdAt: Date | string;
-  matchPositions: number[];
 }
 
 interface SearchResultCardProps {
   result: SearchResult;
   searchQuery: string;
-  onPress: () => void;
+  onPress?: () => void;
 }
 
 export default function SearchResultCard({ result, searchQuery, onPress }: SearchResultCardProps) {
-  const [showFullContext, setShowFullContext] = useState(false);
-
+  const router = useRouter();
+  const [thumbnailUri, setThumbnailUri] = useState<string | null>(null);
+  const [thumbnailLoading, setThumbnailLoading] = useState(true);
+  const [showVideoModal, setShowVideoModal] = useState(false);
+  
+  // Load thumbnail when component mounts
+  useEffect(() => {
+    loadThumbnail();
+  }, [result.thumbnailUrl, result.videoUrl]);
+  
+  const loadThumbnail = async () => {
+    try {
+      setThumbnailLoading(true);
+      const thumbnail = await getVideoThumbnail({
+        thumbnailUrl: result.thumbnailUrl,
+        videoUrl: result.videoUrl,
+        fallbackTime: 1000,
+        quality: 0.8,
+      });
+      
+      if (thumbnail) {
+        setThumbnailUri(thumbnail);
+      }
+    } catch (error) {
+      console.warn('[SearchResultCard] Failed to load thumbnail:', error);
+    } finally {
+      setThumbnailLoading(false);
+    }
+  };
+  
   // Format time display
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -59,111 +86,79 @@ export default function SearchResultCard({ result, searchQuery, onPress }: Searc
     return `${Math.floor(diffInDays / 30)} months ago`;
   };
 
-  // Highlight matching text
-  const renderHighlightedTranscript = () => {
-    const beforeMatch = result.transcript.substring(0, result.matchStart);
-    const match = result.transcript.substring(result.matchStart, result.matchEnd);
-    const afterMatch = result.transcript.substring(result.matchEnd);
-
-    return (
-      <Text style={styles.transcriptText}>
-        {showFullContext ? (
-          <>
-            {beforeMatch}
-            <Text style={styles.highlightedText}>{match}</Text>
-            {afterMatch}
-          </>
-        ) : (
-          <>
-            {beforeMatch.length > 50 ? '...' + beforeMatch.slice(-50) : beforeMatch}
-            <Text style={styles.highlightedText}>{match}</Text>
-            {afterMatch.slice(0, 50)}{afterMatch.length > 50 ? '...' : ''}
-          </>
-        )}
-      </Text>
-    );
+  // Get transcript preview
+  const getTranscriptPreview = () => {
+    const maxLength = 120;
+    if (result.transcript.length <= maxLength) {
+      return result.transcript;
+    }
+    return result.transcript.slice(0, maxLength) + '...';
   };
-
-  // Calculate timeline position
-  const getTimelinePosition = (timestamp: number) => {
-    return (timestamp / result.videoDuration) * 100;
+  
+  const handlePress = () => {
+    if (onPress) {
+      onPress();
+    } else {
+      // Open video in fullscreen modal
+      setShowVideoModal(true);
+    }
   };
 
   return (
-    <TouchableOpacity style={styles.container} onPress={onPress} activeOpacity={0.9}>
-      {/* User Info Header */}
-      <View style={styles.header}>
-        <Image source={{ uri: result.userAvatar }} style={styles.avatar} />
-        <View style={styles.headerText}>
-          <Text style={styles.userName}>{result.userName}</Text>
-          <Text style={styles.groupName}>{result.groupName} • {formatRelativeTime(result.createdAt)}</Text>
-        </View>
-      </View>
-
-      {/* Video Thumbnail */}
-      <View style={styles.thumbnailContainer}>
-        <Image source={{ uri: result.thumbnailUrl }} style={styles.thumbnail} />
-        <View style={styles.playOverlay}>
-          <View style={styles.playButton}>
-            <Play size={24} color="#FFFFFF" fill="#FFFFFF" />
+    <>
+      <TouchableOpacity style={styles.container} onPress={handlePress} activeOpacity={0.9}>
+        {/* Video Card */}
+        <View style={styles.videoCard}>
+          {thumbnailUri ? (
+            <Image 
+              source={{ uri: thumbnailUri }} 
+              style={styles.thumbnail}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={styles.thumbnail}>
+              <Text style={styles.thumbnailPlaceholder}>
+                {thumbnailLoading ? 'Loading...' : `📹 ${result.userName}&apos;s Video`}
+              </Text>
+            </View>
+          )}
+          <View style={styles.playOverlay}>
+            <View style={styles.playButton}>
+              <Play size={20} color="#FFFFFF" fill="#FFFFFF" />
+            </View>
+          </View>
+          <View style={styles.durationBadge}>
+            <Text style={styles.durationText}>{formatTime(result.videoDuration)}</Text>
           </View>
         </View>
-        <View style={styles.durationBadge}>
-          <Text style={styles.durationText}>{formatTime(result.videoDuration)}</Text>
-        </View>
-      </View>
 
-      {/* Transcript with Highlighting */}
-      <View style={styles.transcriptContainer}>
-        {renderHighlightedTranscript()}
-      </View>
+        {/* Content */}
+        <View style={styles.content}>
+          {/* User Info */}
+          <View style={styles.userInfo}>
+            <Image source={{ uri: result.userAvatar }} style={styles.avatar} />
+            <View style={styles.userText}>
+              <Text style={styles.userName}>{result.userName}</Text>
+              <Text style={styles.metadata}>
+                {result.groupName} • {formatRelativeTime(result.createdAt)}
+              </Text>
+            </View>
+          </View>
 
-      {/* Video Timeline */}
-      <View style={styles.timelineContainer}>
-        <View style={styles.timeline}>
-          {/* Progress line */}
-          <View style={styles.timelineTrack} />
-          
-          {/* Match indicators */}
-          {result.matchPositions.map((position, index) => (
-            <View
-              key={index}
-              style={[
-                styles.matchIndicator,
-                { left: `${getTimelinePosition(position)}%` },
-                position === result.timestamp && styles.activeMatchIndicator,
-              ]}
-            />
-          ))}
-        </View>
-        <Text style={styles.timelineText}>
-          {formatTime(result.timestamp)} / {formatTime(result.videoDuration)}
-        </Text>
-      </View>
-
-      {/* Action Buttons */}
-      <View style={styles.actions}>
-        <TouchableOpacity 
-          style={styles.actionButton}
-          onPress={() => setShowFullContext(!showFullContext)}
-        >
-          <MessageSquare size={16} color="#6B7280" />
-          <Text style={styles.actionText}>
-            {showFullContext ? 'Less' : 'Context'}
+          {/* Transcript Preview */}
+          <Text style={styles.transcript} numberOfLines={3}>
+            {getTranscriptPreview()}
           </Text>
-        </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
 
-        <TouchableOpacity style={styles.actionButton}>
-          <Play size={16} color="#6B7280" />
-          <Text style={styles.actionText}>Watch</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.actionButton}>
-          <Share2 size={16} color="#6B7280" />
-          <Text style={styles.actionText}>Share</Text>
-        </TouchableOpacity>
-      </View>
-    </TouchableOpacity>
+      {/* Video Modal */}
+      <VideoModal
+        visible={showVideoModal}
+        videoUrl={result.videoUrl}
+        onClose={() => setShowVideoModal(false)}
+      />
+    </>
   );
 }
 
@@ -183,40 +178,23 @@ const styles = StyleSheet.create({
     elevation: 2,
     overflow: 'hidden',
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-  },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    marginRight: 12,
-  },
-  headerText: {
-    flex: 1,
-  },
-  userName: {
-    fontSize: 16,
-    fontFamily: 'Inter-SemiBold',
-    color: '#1F2937',
-  },
-  groupName: {
-    fontSize: 14,
-    fontFamily: 'Inter-Regular',
-    color: '#6B7280',
-    marginTop: 2,
-  },
-  thumbnailContainer: {
-    width: width - 32,
-    height: (width - 32) * 0.6,
+  videoCard: {
+    width: '100%',
+    height: 200,
     backgroundColor: '#F3F4F6',
     position: 'relative',
   },
   thumbnail: {
     width: '100%',
     height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#E5E7EB',
+  },
+  thumbnailPlaceholder: {
+    fontSize: 16,
+    fontFamily: 'Inter-Medium',
+    color: '#6B7280',
   },
   playOverlay: {
     position: 'absolute',
@@ -226,12 +204,12 @@ const styles = StyleSheet.create({
     bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    backgroundColor: 'rgba(0, 0, 0, 0.2)',
   },
   playButton: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
     justifyContent: 'center',
     alignItems: 'center',
@@ -250,75 +228,38 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Medium',
     color: '#FFFFFF',
   },
-  transcriptContainer: {
+  content: {
     padding: 12,
   },
-  transcriptText: {
+  userInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  avatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    marginRight: 8,
+  },
+  userText: {
+    flex: 1,
+  },
+  userName: {
+    fontSize: 14,
+    fontFamily: 'Inter-SemiBold',
+    color: '#1F2937',
+  },
+  metadata: {
+    fontSize: 12,
+    fontFamily: 'Inter-Regular',
+    color: '#6B7280',
+    marginTop: 1,
+  },
+  transcript: {
     fontSize: 14,
     fontFamily: 'Inter-Regular',
     color: '#4B5563',
     lineHeight: 20,
-  },
-  highlightedText: {
-    backgroundColor: '#FEF3E8',
-    color: '#F97316',
-    fontFamily: 'Inter-SemiBold',
-  },
-  timelineContainer: {
-    paddingHorizontal: 12,
-    paddingBottom: 8,
-  },
-  timeline: {
-    height: 24,
-    position: 'relative',
-    justifyContent: 'center',
-  },
-  timelineTrack: {
-    height: 4,
-    backgroundColor: '#E5E7EB',
-    borderRadius: 2,
-  },
-  matchIndicator: {
-    position: 'absolute',
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#F97316',
-    top: 8,
-    marginLeft: -4,
-  },
-  activeMatchIndicator: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    top: 6,
-    marginLeft: -6,
-    backgroundColor: '#EA580C',
-  },
-  timelineText: {
-    fontSize: 12,
-    fontFamily: 'Inter-Regular',
-    color: '#6B7280',
-    marginTop: 4,
-  },
-  actions: {
-    flexDirection: 'row',
-    paddingHorizontal: 12,
-    paddingBottom: 12,
-    justifyContent: 'space-around',
-  },
-  actionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: '#F9FAFB',
-  },
-  actionText: {
-    fontSize: 14,
-    fontFamily: 'Inter-Medium',
-    color: '#6B7280',
-    marginLeft: 6,
   },
 }); 

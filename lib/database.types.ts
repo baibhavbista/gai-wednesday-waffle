@@ -87,6 +87,8 @@ export interface Database {
           ai_caption: string | null
           ai_transcript: string | null
           ai_summary: string | null
+          thumbnail_url: string | null
+          duration_seconds: number | null
         }
         Insert: {
           id?: string
@@ -100,6 +102,8 @@ export interface Database {
           ai_caption?: string | null
           ai_transcript?: string | null
           ai_summary?: string | null
+          thumbnail_url?: string | null
+          duration_seconds?: number | null
         }
         Update: {
           content_url?: string | null
@@ -108,6 +112,8 @@ export interface Database {
           ai_caption?: string | null
           ai_transcript?: string | null
           ai_summary?: string | null
+          thumbnail_url?: string | null
+          duration_seconds?: number | null
         }
       }
     }

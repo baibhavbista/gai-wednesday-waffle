@@ -50,10 +50,6 @@ export function SearchFilters({ groups, groupMembers, onClose, onApply }: Search
     setLocalFilters({ ...localFilters, userIds: newUserIds });
   };
 
-  const handleMediaTypeChange = (type: 'video' | 'photo' | 'all') => {
-    setLocalFilters({ ...localFilters, mediaType: type });
-  };
-
   const handleDateChange = (type: 'start' | 'end', date: Date | undefined) => {
     if (date) {
       setLocalFilters({
@@ -95,8 +91,7 @@ export function SearchFilters({ groups, groupMembers, onClose, onApply }: Search
   const activeFilterCount = 
     localFilters.groupIds.length +
     localFilters.userIds.length +
-    (localFilters.dateRange.start ? 1 : 0) +
-    (localFilters.mediaType !== 'all' ? 1 : 0);
+    (localFilters.dateRange.start ? 1 : 0);
 
   return (
     <Modal
@@ -117,32 +112,6 @@ export function SearchFilters({ groups, groupMembers, onClose, onApply }: Search
         </View>
 
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-          {/* Media Type Filter */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Media Type</Text>
-            <View style={styles.chipContainer}>
-              {(['all', 'video', 'photo'] as const).map((type) => (
-                <TouchableOpacity
-                  key={type}
-                  style={[
-                    styles.chip,
-                    localFilters.mediaType === type && styles.chipActive,
-                  ]}
-                  onPress={() => handleMediaTypeChange(type)}
-                >
-                  <Text
-                    style={[
-                      styles.chipText,
-                      localFilters.mediaType === type && styles.chipTextActive,
-                    ]}
-                  >
-                    {type === 'all' ? 'All Media' : type === 'video' ? 'Videos' : 'Photos'}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-
           {/* Date Range Filter */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Date Range</Text>

@@ -8,12 +8,12 @@ import {
   Dimensions,
   Modal,
 } from 'react-native';
-import { Video, ResizeMode } from 'expo-av';
-import * as VideoThumbnails from 'expo-video-thumbnails';
 import { Heart, MessageCircle, Clock, Eye, Play, X, Pause } from 'lucide-react-native';
 import { WaffleMessage as WaffleMessageType } from '@/store/useWaffleStore';
 import { useRouter } from 'expo-router';
 import { fetchWaffleRecap } from '@/lib/ai-service';
+import { getVideoThumbnail } from '@/lib/thumbnail-utils';
+import VideoModal from './VideoModal';
 
 
 const { width, height } = Dimensions.get('window');
@@ -32,8 +32,6 @@ export default function WaffleMessage({
   isInViewport = false
 }: WaffleMessageProps) {
   const [showVideoModal, setShowVideoModal] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(true);
-  const [showControls, setShowControls] = useState(true);
   const [videoThumbnail, setVideoThumbnail] = useState<string | null>(null);
   const [showRecapModal, setShowRecapModal] = useState(false);
   const [recapContent, setRecapContent] = useState<string | null>(null);
@@ -46,49 +44,40 @@ export default function WaffleMessage({
   const isOwnMessage = message.userId === currentUserId;
   const isVideo = message.content.type === 'video';
 
-
-      // console.log('message', message.content.url, isVideo, isInViewport);
+  // Format video duration
+  const formatDuration = (seconds?: number) => {
+    if (!seconds) return '';
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
 
   // Generate video thumbnail only when component is in viewport
   useEffect(() => {
     const generateThumbnail = async () => {
       if (isVideo && message.content.url && isInViewport && !videoThumbnail) {
-        console.log('Generating video thumbnail for ', message,  message.content.url);
+        console.log('[WaffleMessage] Getting thumbnail for:', message.id);
         try {
-          const { uri } = await VideoThumbnails.getThumbnailAsync(
-            message.content.url,
-            {
-              time: 1000, // Get thumbnail at 1 second
-              quality: 0.8, // Good quality
-            }
-          );
-          setVideoThumbnail(uri);
+          const thumbnail = await getVideoThumbnail({
+            thumbnailUrl: message.content.thumbnail,
+            videoUrl: message.content.url,
+            fallbackTime: 1000,
+            quality: 0.8,
+          });
+          
+          if (thumbnail) {
+            setVideoThumbnail(thumbnail);
+          }
         } catch (error) {
-          console.warn('Failed to generate video thumbnail:', error);
+          console.warn('[WaffleMessage] Failed to get video thumbnail:', error);
         }
       }
     };
 
     generateThumbnail();
-  }, [isVideo, message.content.url, isInViewport, videoThumbnail]);
+  }, [isVideo, message.content.url, message.content.thumbnail, isInViewport, videoThumbnail]);
 
-  // Auto-hide controls after 3 seconds
-  const hideControlsTimer = () => {
-    setTimeout(() => {
-      setShowControls(false);
-    }, 3000);
-  };
 
-  const handleVideoPress = () => {
-    setShowControls(true);
-    hideControlsTimer();
-  };
-
-  const togglePlayPause = () => {
-    setIsPlaying(!isPlaying);
-    setShowControls(true);
-    hideControlsTimer();
-  };
 
   const handleRecapPress = async () => {
     if (!message.content.url) {
@@ -191,6 +180,11 @@ export default function WaffleMessage({
                     <Play size={24} color="#000000" />
                   </View>
                 </View>
+                {message.videoDuration && (
+                  <View style={styles.durationBadge}>
+                    <Text style={styles.durationText}>{formatDuration(message.videoDuration)}</Text>
+                  </View>
+                )}
               </TouchableOpacity>
             ) : (
               // Image content
@@ -240,58 +234,11 @@ export default function WaffleMessage({
       </View>
 
       {/* Fullscreen Video Modal */}
-      <Modal
+      <VideoModal
         visible={showVideoModal}
-        animationType="fade"
-        presentationStyle="overFullScreen"
-        onRequestClose={() => {
-          setShowVideoModal(false);
-          setIsPlaying(true);
-          setShowControls(true);
-        }}
-      >
-        <TouchableOpacity 
-          style={styles.videoModalContainer}
-          activeOpacity={1}
-          onPress={handleVideoPress}
-        >
-          <Video
-            source={{ uri: message.content.url || '' }}
-            style={styles.fullscreenVideo}
-            shouldPlay={isPlaying}
-            isLooping={false}
-            resizeMode={ResizeMode.CONTAIN}
-            useNativeControls={false}
-          />
-          
-          {/* Custom Controls Overlay */}
-          {showControls && (
-            <View style={styles.videoControlsOverlay}>
-              <TouchableOpacity
-                style={styles.closeButton}
-                onPress={() => {
-                  setShowVideoModal(false);
-                  setIsPlaying(true);
-                  setShowControls(true);
-                }}
-              >
-                <X size={24} color="#FFFFFF" />
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={styles.playPauseButton}
-                onPress={togglePlayPause}
-              >
-                {isPlaying ? (
-                  <Pause size={32} color="#FFFFFF" />
-                ) : (
-                  <Play size={32} color="#FFFFFF" />
-                )}
-              </TouchableOpacity>
-            </View>
-          )}
-        </TouchableOpacity>
-      </Modal>
+        videoUrl={message.content.url || ''}
+        onClose={() => setShowVideoModal(false)}
+      />
 
       {/* AI Recap Modal */}
       <Modal
@@ -499,37 +446,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 8,
   },
-  videoModalContainer: {
-    flex: 1,
-    backgroundColor: 'black',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  closeButton: {
-    position: 'absolute',
-    top: 80,
-    right: 20,
-    padding: 8,
-  },
-  fullscreenVideo: {
-    width: width,
-    height: height,
-    resizeMode: 'contain',
-  },
-  videoControlsOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  playPauseButton: {
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    borderRadius: 25,
-    padding: 10,
-  },
+
   // Recap Modal Styles
   recapModalContainer: {
     flex: 1,
@@ -610,5 +527,19 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Regular',
     color: '#9CA3AF',
     textAlign: 'center',
+  },
+  durationBadge: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  durationText: {
+    fontSize: 11,
+    fontFamily: 'Inter-Medium',
+    color: '#FFFFFF',
   },
 });

@@ -19,6 +19,7 @@ export interface WaffleMessage {
   likes: number;
   hasLiked: boolean;
   reactions: { [userId: string]: string }; // emoji reactions
+  videoDuration?: number; // Duration in seconds for video content
 }
 
 export interface UserProfile {
@@ -313,7 +314,7 @@ export const useWaffleStore = create<WaffleState>((set, get) => ({
     groupIds: [],
     userIds: [],
     dateRange: { start: null, end: null },
-    mediaType: 'all',
+    mediaType: 'video', // Default to video since we only support videos
   },
   totalSearchResults: 0,
   hasMoreSearchResults: false,
@@ -377,6 +378,7 @@ export const useWaffleStore = create<WaffleState>((set, get) => ({
                   type: latestWaffle.content_type as 'photo' | 'video' | 'text',
                   url: latestWaffle.content_type === 'text' ? undefined : latestWaffle.content_url || '',
                   text: latestWaffle.content_type === 'text' ? latestWaffle.caption || '' : undefined,
+                  thumbnail: latestWaffle.thumbnail_url ?? undefined,
                 },
                 caption: latestWaffle.caption || '',
                 createdAt: new Date(latestWaffle.created_at),
@@ -385,6 +387,7 @@ export const useWaffleStore = create<WaffleState>((set, get) => ({
                 likes: 0, // TODO: Implement likes
                 hasLiked: false,
                 reactions: {},
+                videoDuration: latestWaffle.content_type === 'video' ? latestWaffle.duration_seconds ?? undefined : undefined,
               } : undefined,
               members: groupMembers?.map(member => ({
                 id: member.user_id,
@@ -513,7 +516,10 @@ export const useWaffleStore = create<WaffleState>((set, get) => ({
           userId: newWaffle.user_id,
           userName: currentUser.name,
           userAvatar: currentUser.avatar,
-          content: messageData.content,
+          content: {
+            ...messageData.content,
+            thumbnail: newWaffle.thumbnail_url ?? messageData.content.thumbnail,
+          },
           caption: messageData.caption,
           createdAt: new Date(newWaffle.created_at),
           groupId: messageData.groupId,
@@ -521,6 +527,7 @@ export const useWaffleStore = create<WaffleState>((set, get) => ({
           likes: 0,
           hasLiked: false,
           reactions: {},
+          videoDuration: newWaffle.content_type === 'video' ? newWaffle.duration_seconds ?? undefined : undefined,
         };
 
         console.log('✅ Final message object for store:');
@@ -924,6 +931,7 @@ export const useWaffleStore = create<WaffleState>((set, get) => ({
             type: waffle.content_type as 'photo' | 'video' | 'text',
             url: waffle.content_type === 'text' ? undefined : waffle.content_url || '',
             text: waffle.content_type === 'text' ? waffle.caption || '' : undefined,
+            thumbnail: waffle.thumbnail_url ?? undefined,
           },
           caption: waffle.caption || '',
           createdAt: new Date(waffle.created_at),
@@ -932,6 +940,7 @@ export const useWaffleStore = create<WaffleState>((set, get) => ({
           likes: 0, // TODO: Implement likes system
           hasLiked: false,
           reactions: {}, // TODO: Implement reactions
+          videoDuration: waffle.content_type === 'video' ? waffle.duration_seconds ?? undefined : undefined,
         }));
 
         // Replace messages for this group only

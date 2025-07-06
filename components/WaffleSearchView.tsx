@@ -17,6 +17,7 @@ import {
 import { ArrowLeft, Search, Mic, Filter, X } from 'lucide-react-native';
 import SearchResultCard from './SearchResultCard';
 import { SearchFilters } from './SearchFilters';
+import AIAnswerCard from './AIAnswerCard';
 import { useWaffleStore } from '@/store/useWaffleStore';
 import { searchService } from '@/lib/search-service';
 
@@ -32,6 +33,10 @@ export default function WaffleSearchView({ visible, onClose, groupId }: WaffleSe
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [aiAnswer, setAiAnswer] = useState<{ status: 'pending' | 'streaming' | 'complete' | 'error', text: string | null }>({ 
+    status: 'complete', 
+    text: null 
+  });
   const [recentSearches, setRecentSearches] = useState<string[]>([
     "Josh's new job",
     "Weekend plans",
@@ -39,6 +44,7 @@ export default function WaffleSearchView({ visible, onClose, groupId }: WaffleSe
   ]);
   const [showFilters, setShowFilters] = useState(false);
   const searchInputRef = useRef<TextInput>(null);
+  const sseCleanupRef = useRef<(() => void) | null>(null);
   const { 
     groups, 
     messages, 
@@ -136,6 +142,37 @@ export default function WaffleSearchView({ visible, onClose, groupId }: WaffleSe
       
       setSearchResults(response.results);
       
+      // Handle AI answer
+      if (response.aiAnswer && response.searchId) {
+        setAiAnswer(response.aiAnswer);
+        
+        // Set up SSE connection for real-time AI answer
+        if (response.aiAnswer.status === 'pending') {
+          try {
+            const cleanup = await searchService.streamAIAnswer(
+              response.searchId,
+              (data) => {
+                console.log('[WaffleSearchView] AI Answer update:', data);
+                setAiAnswer({
+                  status: data.status as 'pending' | 'streaming' | 'complete' | 'error',
+                  text: data.text || null,
+                });
+              }
+            );
+            
+            // Store cleanup function
+            sseCleanupRef.current = cleanup;
+          } catch (sseError) {
+            console.error('[WaffleSearchView] Failed to start SSE:', sseError);
+            // Fallback to showing error
+            setAiAnswer({
+              status: 'error',
+              text: null,
+            });
+          }
+        }
+      }
+      
       // Add to recent searches
       setRecentSearches(prev => {
         const updated = [searchQuery, ...prev.filter(q => q !== searchQuery)].slice(0, 5);
@@ -167,6 +204,14 @@ export default function WaffleSearchView({ visible, onClose, groupId }: WaffleSe
   const clearSearch = () => {
     setSearchQuery('');
     setSearchResults([]);
+    setAiAnswer({ status: 'complete', text: null });
+    
+    // Clean up any active SSE connection
+    if (sseCleanupRef.current) {
+      sseCleanupRef.current();
+      sseCleanupRef.current = null;
+    }
+    
     searchInputRef.current?.focus();
   };
 
@@ -239,6 +284,16 @@ export default function WaffleSearchView({ visible, onClose, groupId }: WaffleSe
     return null;
   };
 
+  // Clean up SSE connection on unmount
+  useEffect(() => {
+    return () => {
+      if (sseCleanupRef.current) {
+        sseCleanupRef.current();
+        sseCleanupRef.current = null;
+      }
+    };
+  }, []);
+
   return (
     <Modal
       visible={visible}
@@ -306,13 +361,23 @@ export default function WaffleSearchView({ visible, onClose, groupId }: WaffleSe
           <FlatList
             data={searchResults}
             keyExtractor={(item) => item.id}
+            ListHeaderComponent={
+              searchResults.length > 0 && searchQuery ? (
+                <AIAnswerCard 
+                  query={searchQuery}
+                  answer={aiAnswer.text}
+                  status={aiAnswer.status}
+                />
+              ) : null
+            }
             renderItem={({ item }) => (
               <SearchResultCard
                 result={item}
                 searchQuery={searchQuery}
                 onPress={() => {
-                  // Navigate to chat with video at timestamp
-                  console.log('Navigate to video at timestamp:', item.timestamp);
+                  // Navigate to chat with video
+                  console.log('Navigate to video:', item.videoUrl);
+                  // TODO: Implement navigation to video player
                 }}
               />
             )}

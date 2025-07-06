@@ -46,7 +46,11 @@ formData.append('videoChunk', videoBlob);
 ### `POST /process-full-video` (Webhook)
 Processes full videos after upload to Supabase Storage
 - **Trigger**: Supabase Storage webhook
-- **Actions**: Transcribe → Generate embeddings → Create AI recap → Store in DB
+- **Actions**: 
+  - Extract video duration using FFprobe
+  - Generate thumbnail image
+  - Transcribe audio → Generate embeddings → Create AI recap
+  - Store all metadata in DB
 
 ### `POST /ai/convo-starter` (Protected)
 Generates conversation prompts based on recent group activity
@@ -55,7 +59,7 @@ Generates conversation prompts based on recent group activity
 - **Output**: `{ suggestions: string[] }`
 
 ### `POST /api/search/waffles` (Protected)
-Semantic search across waffle transcripts
+Semantic search across waffle transcripts with AI-powered answers
 - **Auth**: Bearer token (Supabase JWT)
 - **Input**: 
   ```json
@@ -79,24 +83,51 @@ Semantic search across waffle transcripts
       "userName": "Josh M.",
       "groupName": "Work Friends",
       "transcript": "Full transcript text...",
-      "matchStart": 42,
-      "matchEnd": 67,
-      "timestamp": 135,
       "videoDuration": 270,
-      "createdAt": "2024-01-15T10:30:00Z",
-      "matchPositions": [135, 203]
+      "createdAt": "2024-01-15T10:30:00Z"
     }],
     "totalCount": 25,
     "suggestions": ["Josh's new job in Work Friends"],
-    "processingStatus": "complete"
+    "processingStatus": "complete",
+    "searchId": "search-1751808123-abc123",
+    "aiAnswer": {
+      "status": "pending",
+      "text": null
+    }
   }
   ```
 - **Features**:
   - Embedding-based semantic search using pgvector
   - Temporal query understanding ("last week", "yesterday")
   - Permission-aware (only searches groups user is member of)
-  - Sentence-level match highlighting
+  - Immediate results with async AI answer generation
   - Result caching for performance
+
+### `GET /api/search/ai-stream/:searchId` (Protected) - SSE
+Streams AI-generated answers for search results
+- **Auth**: Bearer token (Supabase JWT)
+- **Protocol**: Server-Sent Events (SSE)
+- **Flow**:
+  1. Client connects after receiving `searchId` from search endpoint
+  2. Server streams GPT-4o response token-by-token
+  3. Connection closes automatically when complete
+- **Messages**:
+  ```javascript
+  // Initial connection
+  data: {"status":"connected"}\n\n
+  
+  // Progressive updates
+  data: {"status":"streaming","text":"Josh mentioned..."}\n\n
+  data: {"status":"streaming","text":"Josh mentioned accepting..."}\n\n
+  
+  // Final message
+  data: {"status":"complete","text":"Josh mentioned accepting a new position at Tesla..."}\n\n
+  ```
+- **Features**:
+  - Real-time streaming as GPT generates response
+  - Supports multiple concurrent clients
+  - Automatic cleanup after completion
+  - Graceful error handling
 
 ## 🚀 Setup
 
@@ -145,14 +176,53 @@ PORT=3000
 User App → Supabase Auth → Render Backend → OpenAI APIs
                 ↓                  ↓
           Supabase Storage    PostgreSQL (vectors)
+                                   ↓
+                              SSE Stream → Client
 ```
 
 ## 🔄 Processing Flow
 
 1. **Caption Generation**: Audio chunk → FFmpeg → Whisper → Embeddings → Fetch user's last 5 captions (group-filtered) → RAG lookup (group-aware) → GPT-4o → 3 captions
-2. **Full Processing**: Video upload → Webhook → Download → Transcribe → Embed → Store with AI recap
+2. **Full Video Processing**: 
+   - Video upload → Storage webhook → Download video
+   - **Extract metadata**: FFprobe → video duration (seconds)
+   - **Generate thumbnail**: FFmpeg → frame at 1s → scale to 640px → upload
+   - **Process audio**: FFmpeg → extract audio → Whisper → transcript
+   - **AI enrichment**: Generate embeddings → Create AI recap
+   - **Store everything**: Duration, thumbnail URL, transcript, embeddings, recap → DB
 3. **Conversation Starters**: Fetch recent transcripts → GPT-4o → 2 contextual prompts
-4. **Search**: Query → Parse temporal → Generate embedding → Vector similarity search → Find match positions → Return highlighted results
+4. **Search with AI**: 
+   - **Immediate**: Query → Parse temporal → Generate embedding → Vector search → Return results + searchId
+   - **Async**: Generate AI answer → Stream via SSE → Progressive display in UI
+
+## 📡 SSE Implementation Details
+
+The search functionality uses Server-Sent Events (SSE) for streaming AI answers:
+
+1. **Why SSE over WebSockets**:
+   - One-way server→client communication
+   - Built-in reconnection
+   - Works better through proxies/firewalls
+   - Lower overhead for mobile devices
+
+2. **Task Management**:
+   - Each search creates a unique task ID: `userId:searchId`
+   - Tasks store client connections and AI generation state
+   - Automatic cleanup 5 minutes after completion
+
+3. **Client Usage**:
+   ```javascript
+   // 1. Search request
+   const searchResponse = await fetch('/api/search/waffles', {...});
+   const { searchId, results } = await searchResponse.json();
+   
+   // 2. Connect to SSE stream
+   const eventSource = new EventSource(`/api/search/ai-stream/${searchId}`);
+   eventSource.onmessage = (event) => {
+     const data = JSON.parse(event.data);
+     // Update UI with streaming text
+   };
+   ```
 
 ## 📝 Notes
 
