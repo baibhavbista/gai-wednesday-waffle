@@ -501,6 +501,9 @@ app.post('/process-full-video', async (req, res) => {
     // Extract video duration
     const videoDuration = await getVideoDuration(tempVideoPath);
 
+    // Initialize thumbnail URL variable
+    let thumbnailUrl = null;
+
     // Generate thumbnail
     tempThumbnailPath = tmp.tmpNameSync({ postfix: '.jpg' });
     await generateVideoThumbnail(tempVideoPath, tempThumbnailPath);
@@ -524,36 +527,12 @@ app.post('/process-full-video', async (req, res) => {
       console.log('[Webhook] Thumbnail uploaded successfully');
       
       // Get public URL for the thumbnail
-      const { data: { publicUrl: thumbnailUrl } } = serviceRoleClient.storage
+      const { data: urlData } = serviceRoleClient.storage
         .from(bucketId)
         .getPublicUrl(thumbnailPath);
       
-      // Update waffle record with thumbnail URL and duration
-      const contentUrl = `https://${process.env.SUPABASE_URL.replace('https://', '')}/storage/v1/object/public/${bucketId}/${videoPath}`;
-      
-      // Try to update with both columns first
-      const { error: updateError } = await serviceRoleClient
-        .from('waffles')
-        .update({ 
-          thumbnail_url: thumbnailUrl,
-          duration_seconds: videoDuration
-        })
-        .eq('content_url', contentUrl);
-      
-      if (updateError) {
-        console.error('[Webhook] Failed to update waffle with thumbnail and duration:', updateError);
-        
-        // If update fails, it might be because columns don't exist
-        // Try updating without these columns so the webhook doesn't fail
-        if (updateError.code === '42703') { // column does not exist
-          console.warn('[Webhook] thumbnail_url or duration_seconds columns not found');
-          console.warn('[Webhook] Please run the following migrations:');
-          console.warn('[Webhook] - scripts/supabase/19-add-thumbnail-url.sql');
-          console.warn('[Webhook] - scripts/supabase/20-add-duration-column.sql');
-        }
-      } else {
-        console.log('[Webhook] Updated waffle with thumbnail URL and duration:', videoDuration, 'seconds');
-      }
+      thumbnailUrl = urlData?.publicUrl;
+      console.log('[Webhook] Thumbnail URL will be stored with transcript:', thumbnailUrl);
     }
 
     // Extract audio for transcription
@@ -634,16 +613,18 @@ Transcript: "${transcript.text}"`
       const canonicalContentUrl = urlRows?.[0]?.content_url || videoPath; // fall back to file name path
 
       const upsertQuery = `
-      INSERT INTO public.transcripts (content_url, text, embedding, ai_recap)
-      VALUES ($1, $2, $3::vector, $4)
+      INSERT INTO public.transcripts (content_url, text, embedding, ai_recap, thumbnail_url, duration_seconds)
+      VALUES ($1, $2, $3::vector, $4, $5, $6)
       ON CONFLICT (content_url) DO UPDATE
         SET text = EXCLUDED.text,
             embedding = EXCLUDED.embedding,
             ai_recap = EXCLUDED.ai_recap,
+            thumbnail_url = EXCLUDED.thumbnail_url,
+            duration_seconds = EXCLUDED.duration_seconds,
             created_at = NOW();
       `;
 
-      await dbClient.query(upsertQuery, [canonicalContentUrl, transcript.text, embeddingVectorLiteral, aiRecap]);
+      await dbClient.query(upsertQuery, [canonicalContentUrl, transcript.text, embeddingVectorLiteral, aiRecap, thumbnailUrl, videoDuration]);
 
       console.log(`Successfully upserted transcript for content_url: ${canonicalContentUrl}`);
     } catch (dbError) {
@@ -1111,8 +1092,8 @@ app.post('/api/search/waffles', authenticateToken, async (req, res) => {
           w.content_type,
           w.caption,
           w.created_at,
-          NULL::text as thumbnail_url,
-          NULL::integer as duration_seconds,
+          t.thumbnail_url,
+          t.duration_seconds,
           p.name as user_name,
           p.avatar_url as user_avatar,
           g.name as group_name
