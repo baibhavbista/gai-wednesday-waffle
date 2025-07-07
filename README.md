@@ -174,6 +174,7 @@ EXPO_PUBLIC_CAPTION_SERVICE_URL=https://your-render-service.onrender.com
 ```
 
 **Backend (render-backend/.env.local):**
+(Of course, for prod, you actually need to set these in the Render.com service, and you want to set the root folder to be `render-backend`)
 ```bash
 # OpenAI
 OPENAI_API_KEY=sk-...

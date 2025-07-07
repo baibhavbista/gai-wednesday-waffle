@@ -256,7 +256,7 @@ export default function ChatScreen() {
             <View style={styles.emptyIconContainer}>
               <Camera size={48} color="#D1D5DB" />
             </View>
-            <Text style={styles.emptyTitle}>No waffles yet this week</Text>
+            <Text style={styles.emptyTitle}>No waffles yet</Text>
             <Text style={styles.emptySubtitle}>
               Be the first to share a life update with {group.name}!
             </Text>

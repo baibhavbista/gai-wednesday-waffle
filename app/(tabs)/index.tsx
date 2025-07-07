@@ -326,7 +326,7 @@ export default function ChatsScreen() {
                         </Text>
                       </View>
                     ) : (
-                      <Text style={styles.noMessages}>No waffles yet this week</Text>
+                      <Text style={styles.noMessages}>No waffles yet</Text>
                     )}
 
                     {/* Wednesday Nudge Indicator */}
