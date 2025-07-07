@@ -438,6 +438,11 @@ app.post('/process-full-video', async (req, res) => {
   const videoPath = webhookData.name;
   const bucketId = webhookData.bucket_id;
   console.log(`[Webhook] Processing video: ${videoPath} from bucket: ${bucketId}`);
+  console.log('[Webhook] File metadata:', {
+    size: webhookData.metadata?.size,
+    mimetype: webhookData.metadata?.mimetype,
+    lastModified: webhookData.metadata?.lastModified
+  });
   
   // Skip processing if this is a thumbnail or not a video file
   if (videoPath.includes('_thumb.jpg') || videoPath.includes('_thumb.png')) {
@@ -466,18 +471,29 @@ app.post('/process-full-video', async (req, res) => {
   let tempThumbnailPath = null;
 
   try {
-    // Download video from Supabase Storage
+    // Small delay to ensure file is fully available in storage
+    // Sometimes webhooks fire before the file is fully propagated
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // Download video from Supabase Storage using service role client
     console.log('[Webhook] Downloading video from storage...');
-    const { data: videoData, error: downloadError } = await supabase.storage
+    const { data: videoData, error: downloadError } = await serviceRoleClient.storage
       .from(bucketId)
       .download(videoPath);
     
     if (downloadError) {
-      throw new Error(`Failed to download video: ${downloadError.message}`);
+      console.error('[Webhook] Failed to download video:', downloadError);
+      throw new Error(`Failed to download video: ${downloadError.message || JSON.stringify(downloadError)}`);
+    }
+    
+    if (!videoData) {
+      console.error('[Webhook] No video data received from storage');
+      throw new Error('No video data received from storage');
     }
 
     // Save video to temp file
-    tempVideoPath = tmp.tmpNameSync({ postfix: '.mp4' });
+    const fileExtension = videoPath.split('.').pop() || '.mp4';
+    tempVideoPath = tmp.tmpNameSync({ postfix: `.${fileExtension}` });
     const videoBuffer = Buffer.from(await videoData.arrayBuffer());
     await fsPromises.writeFile(tempVideoPath, videoBuffer);
     console.log('[Webhook] Video saved to:', tempVideoPath);
@@ -494,7 +510,7 @@ app.post('/process-full-video', async (req, res) => {
     const thumbnailPath = videoPath.replace(/\.[^/.]+$/, '_thumb.jpg'); // Replace extension with _thumb.jpg
     
     console.log('[Webhook] Uploading thumbnail to:', thumbnailPath);
-    const { error: uploadError } = await supabase.storage
+    const { error: uploadError } = await serviceRoleClient.storage
       .from(bucketId)
       .upload(thumbnailPath, thumbnailBuffer, {
         contentType: 'image/jpeg',
@@ -508,7 +524,7 @@ app.post('/process-full-video', async (req, res) => {
       console.log('[Webhook] Thumbnail uploaded successfully');
       
       // Get public URL for the thumbnail
-      const { data: { publicUrl: thumbnailUrl } } = supabase.storage
+      const { data: { publicUrl: thumbnailUrl } } = serviceRoleClient.storage
         .from(bucketId)
         .getPublicUrl(thumbnailPath);
       
@@ -516,7 +532,7 @@ app.post('/process-full-video', async (req, res) => {
       const contentUrl = `https://${process.env.SUPABASE_URL.replace('https://', '')}/storage/v1/object/public/${bucketId}/${videoPath}`;
       
       // Try to update with both columns first
-      const { error: updateError } = await supabase
+      const { error: updateError } = await serviceRoleClient
         .from('waffles')
         .update({ 
           thumbnail_url: thumbnailUrl,
@@ -657,10 +673,17 @@ Transcript: "${transcript.text}"`
     res.status(500).json({ error: 'Failed to process full video.' });
   } finally {
     // 5. Cleanup all temporary files
-    console.log(`Cleaning up temporary files: ${[tempVideoPath, tempAudioPath, tempThumbnailPath].join(', ')}`);
-    [tempVideoPath, tempAudioPath, tempThumbnailPath].forEach(file => fs.unlink(file, err => {
-      if (err) console.error(`Error deleting temp file ${file}:`, err);
-    }));
+    const tempFiles = [tempVideoPath, tempAudioPath, tempThumbnailPath].filter(Boolean);
+    if (tempFiles.length > 0) {
+      console.log(`Cleaning up temporary files: ${tempFiles.join(', ')}`);
+      tempFiles.forEach(file => {
+        fs.unlink(file, err => {
+          if (err && err.code !== 'ENOENT') {
+            console.error(`Error deleting temp file ${file}:`, err);
+          }
+        });
+      });
+    }
     console.log('Cleanup complete.');
   }
 });
