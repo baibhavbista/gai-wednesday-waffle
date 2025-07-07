@@ -4,6 +4,14 @@
 
 **Wednesday Waffle** recreates the feeling of "hanging out in the kitchen" through a simple weekly ritual: every Wednesday, friends drop quick video updates. No performative posting, no algorithms, no disappearing content—just authentic moments shared and kept forever with your closest people.
 
+## 🎥 Demo Video
+
+<div align="center">
+  <video src="demo-assets/demo-sped-up.mp4" width="300" autoplay loop muted playsinline>
+    <a href="demo-assets/demo-sped-up.mp4">View Demo Video</a>
+  </video>
+</div>
+
 ## 🎯 The Problem We're Solving
 
 - **Public socials feel too performative** → endless audience pressure
@@ -333,6 +341,9 @@ We chose local notifications over push notifications for simplicity and reliabil
 - Reschedules on every app launch to maintain coverage
 - Permission requested during profile setup
 
----
 
-**Wednesday Waffle** - Because staying connected shouldn't feel like work. 🧇✨
+## Notes if you want to continue development
+The things I'd start with:
+1. Retries and proper error handling on network issues.
+2. Duplicate fetches when loading the group list and specific group chat screens.
+3. TODO add here
