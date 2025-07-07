@@ -116,7 +116,8 @@ class StorageService {
       // Get signed URL for private access
       const { data: urlData } = await supabase.storage
         .from(STORAGE_BUCKETS.WAFFLES)
-        .createSignedUrl(data.path, 60 * 60 * 24 * 7) // 7 days
+        // 10 years in seconds (chatgpt says the only other solution for long running urls would be to make the bucket public)
+        .createSignedUrl(data.path, 315360000)
 
       if (__DEV__) console.log('✅ Waffle content uploaded successfully')
 
