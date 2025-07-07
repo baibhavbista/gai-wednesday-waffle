@@ -20,6 +20,8 @@ export interface GroupWithMembers extends GroupRow {
 export interface WaffleWithUser extends WaffleRow {
   user_name: string
   user_avatar: string | null
+  thumbnail_url?: string | null
+  duration_seconds?: number | null
 }
 
 // GROUPS SERVICE
@@ -176,12 +178,47 @@ export const wafflesService = {
       return { data: null, error }
     }
 
-    // Transform the data to include user info directly
-    const waffles = data?.map(waffle => ({
-      ...waffle,
-      user_name: waffle.profiles?.name || 'Unknown User',
-      user_avatar: waffle.profiles?.avatar_url || null,
-    })) || []
+    // Get unique content URLs to fetch transcript data
+    const contentUrls = data
+      ?.filter(waffle => waffle.content_url && waffle.content_type === 'video')
+      .map(waffle => waffle.content_url) || []
+    
+    // Fetch transcript data if there are video waffles
+    let transcriptsMap = new Map<string, { thumbnail_url: string | null; duration_seconds: number | null }>()
+    
+    if (contentUrls.length > 0) {
+      const { data: transcripts, error: transcriptsError } = await supabase
+        .from('transcripts')
+        .select('content_url, thumbnail_url, duration_seconds')
+        .in('content_url', contentUrls)
+      
+      if (transcriptsError) {
+        console.error('❌ Error fetching transcripts:', transcriptsError)
+        // Continue without transcript data rather than failing completely
+      } else if (transcripts) {
+        // Create a map for quick lookup
+        transcripts.forEach(transcript => {
+          transcriptsMap.set(transcript.content_url, {
+            thumbnail_url: transcript.thumbnail_url,
+            duration_seconds: transcript.duration_seconds
+          })
+        })
+      }
+    }
+
+    // Transform the data to include user info and video metadata
+    const waffles = data?.map(waffle => {
+      const transcriptData = waffle.content_url ? transcriptsMap.get(waffle.content_url) : null
+      
+      return {
+        ...waffle,
+        user_name: waffle.profiles?.name || 'Unknown User',
+        user_avatar: waffle.profiles?.avatar_url || null,
+        // Include video metadata from transcripts if available
+        thumbnail_url: transcriptData?.thumbnail_url || null,
+        duration_seconds: transcriptData?.duration_seconds || null,
+      }
+    }) || []
 
     if (__DEV__) console.log('✅ Waffles fetched:', waffles.length)
     return { data: waffles as WaffleWithUser[], error: null }

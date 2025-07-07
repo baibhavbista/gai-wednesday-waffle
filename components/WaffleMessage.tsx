@@ -56,7 +56,7 @@ export default function WaffleMessage({
   useEffect(() => {
     const generateThumbnail = async () => {
       if (isVideo && message.content.url && isInViewport && !videoThumbnail) {
-        console.log('[WaffleMessage] Getting thumbnail for:', message.id);
+        console.log('[WaffleMessage] Getting thumbnail for:', message.id, message.content.thumbnail);
         try {
           const thumbnail = await getVideoThumbnail({
             thumbnailUrl: message.content.thumbnail,

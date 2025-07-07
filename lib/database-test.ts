@@ -63,8 +63,7 @@ export async function testPhase3Database() {
     // Test 6: Update waffle with AI content
     console.log('\n6️⃣ Testing Waffle AI Update...')
     const { data: updatedWaffle, error: updateError } = await wafflesService.update(newWaffle.id, {
-      ai_caption: 'AI-generated caption for testing',
-      ai_summary: 'This is a test waffle for Phase 3 validation'
+      caption: 'This is a test waffle for Phase 3 validation'
     })
     
     if (updateError) {

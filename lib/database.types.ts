@@ -84,11 +84,6 @@ export interface Database {
           caption: string | null
           created_at: string
           view_count: number
-          ai_caption: string | null
-          ai_transcript: string | null
-          ai_summary: string | null
-          thumbnail_url: string | null
-          duration_seconds: number | null
         }
         Insert: {
           id?: string
@@ -99,21 +94,39 @@ export interface Database {
           caption?: string | null
           created_at?: string
           view_count?: number
-          ai_caption?: string | null
-          ai_transcript?: string | null
-          ai_summary?: string | null
-          thumbnail_url?: string | null
-          duration_seconds?: number | null
         }
         Update: {
           content_url?: string | null
           caption?: string | null
           view_count?: number
-          ai_caption?: string | null
-          ai_transcript?: string | null
-          ai_summary?: string | null
+        }
+      }
+      transcripts: {
+        Row: {
+          content_url: string
+          text: string
+          embedding: number[] | null
+          ai_recap: string | null
+          thumbnail_url: string | null
+          duration_seconds: number | null
+          created_at: string
+        }
+        Insert: {
+          content_url: string
+          text: string
+          embedding?: number[] | null
+          ai_recap?: string | null
           thumbnail_url?: string | null
           duration_seconds?: number | null
+          created_at?: string
+        }
+        Update: {
+          text?: string
+          embedding?: number[] | null
+          ai_recap?: string | null
+          thumbnail_url?: string | null
+          duration_seconds?: number | null
+          created_at?: string
         }
       }
     }

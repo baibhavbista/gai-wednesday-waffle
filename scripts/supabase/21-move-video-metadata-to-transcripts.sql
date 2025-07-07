@@ -20,7 +20,8 @@ ALTER TABLE public.waffles
 DROP COLUMN IF EXISTS thumbnail_url,
 DROP COLUMN IF EXISTS duration_seconds,
 DROP COLUMN IF EXISTS ai_transcript,
-DROP COLUMN IF EXISTS ai_summary;
+DROP COLUMN IF EXISTS ai_summary,
+DROP COLUMN IF EXISTS ai_caption;
 
--- Note: caption stays in waffles because it's specific to each waffle post,
--- not to the video itself (users could conceivably have different captions for the same video) 
+-- Note: The user's custom caption stays in waffles because it's specific to each waffle post,
+-- not to the video itself (users can have different captions for the same video) 
