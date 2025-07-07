@@ -426,16 +426,40 @@ async function generateVideoThumbnail(videoPath, outputPath) {
 // Endpoint for processing full video transcriptions, triggered by Supabase Storage webhook.
 app.post('/process-full-video', async (req, res) => {
   console.log('[Webhook] Received video processing request');
-  const { object } = req.body;
   
-  if (!object || !object.name) {
+  // Handle both old and new webhook payload structures
+  const webhookData = req.body.record || req.body.object;
+  
+  if (!webhookData || !webhookData.name) {
     console.error('[Webhook] Invalid webhook data:', req.body);
     return res.status(400).json({ error: 'Invalid webhook data' });
   }
 
-  const videoPath = object.name;
-  const bucketId = object.bucket_id;
+  const videoPath = webhookData.name;
+  const bucketId = webhookData.bucket_id;
   console.log(`[Webhook] Processing video: ${videoPath} from bucket: ${bucketId}`);
+  
+  // Skip processing if this is a thumbnail or not a video file
+  if (videoPath.includes('_thumb.jpg') || videoPath.includes('_thumb.png')) {
+    console.log('[Webhook] Skipping thumbnail file:', videoPath);
+    return res.status(200).json({ message: 'Skipped thumbnail processing' });
+  }
+  
+  // Check if file has a video extension
+  const videoExtensions = ['.mp4', '.mov', '.avi', '.webm', '.quicktime'];
+  const hasVideoExtension = videoExtensions.some(ext => videoPath.toLowerCase().endsWith(ext));
+  
+  if (!hasVideoExtension) {
+    console.log('[Webhook] Skipping non-video file:', videoPath);
+    return res.status(200).json({ message: 'Skipped non-video file' });
+  }
+  
+  // Optional: Also check MIME type if available
+  const mimeType = webhookData.metadata?.mimetype || webhookData.metadata?.contentType;
+  if (mimeType && !mimeType.startsWith('video/')) {
+    console.log('[Webhook] Skipping non-video MIME type:', mimeType);
+    return res.status(200).json({ message: 'Skipped non-video file based on MIME type' });
+  }
 
   let tempVideoPath = null;
   let tempAudioPath = null;
