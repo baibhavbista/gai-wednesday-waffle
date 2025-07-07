@@ -6,11 +6,7 @@
 
 ## 🎥 Demo Video
 
-<div align="center">
-  <video src="demo-assets/demo-sped-up.mp4" width="300" autoplay loop muted playsinline>
-    <a href="demo-assets/demo-sped-up.mp4">View Demo Video</a>
-  </video>
-</div>
+<video src='https://firebasestorage.googleapis.com/v0/b/firescript-577a2.appspot.com/o/imgs%2Fapp%2Fbaibhav-gauntletai%2FBDtVBlJyuR.mp4?alt=media&token=84c360c2-d5da-41cf-be27-8cffd65cbce5' width=180> </video>
 
 ## 🎯 The Problem We're Solving
 
