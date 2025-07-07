@@ -5,8 +5,7 @@
 **Wednesday Waffle** recreates the feeling of "hanging out in the kitchen" through a simple weekly ritual: every Wednesday, friends drop quick video updates. No performative posting, no algorithms, no disappearing content—just authentic moments shared and kept forever with your closest people.
 
 ## 🎥 Demo Video
-
-<video src='https://firebasestorage.googleapis.com/v0/b/firescript-577a2.appspot.com/o/imgs%2Fapp%2Fbaibhav-gauntletai%2FBDtVBlJyuR.mp4?alt=media&token=84c360c2-d5da-41cf-be27-8cffd65cbce5' width=180> </video>
+Watch the demo video in `demo-assets/demo-sped-up.mp4` or [here](https://firebasestorage.googleapis.com/v0/b/firescript-577a2.appspot.com/o/imgs%2Fapp%2Fbaibhav-gauntletai%2FBDtVBlJyuR.mp4?alt=media&token=84c360c2-d5da-41cf-be27-8cffd65cbce5)
 
 ## 🎯 The Problem We're Solving
 
