@@ -526,12 +526,23 @@ app.post('/process-full-video', async (req, res) => {
     } else {
       console.log('[Webhook] Thumbnail uploaded successfully');
       
-      // Get public URL for the thumbnail
-      const { data: urlData } = serviceRoleClient.storage
+      // Generate a signed URL for the thumbnail (expires in 10 years)
+      const { data: signedUrlData, error: signedUrlError } = await serviceRoleClient.storage
         .from(bucketId)
-        .getPublicUrl(thumbnailPath);
+        // 10 years in seconds (chatgpt says the only other solution for long running urls would be to make the bucket public)
+        .createSignedUrl(thumbnailPath, 315360000); 
       
-      thumbnailUrl = urlData?.publicUrl;
+      if (signedUrlError) {
+        console.error('[Webhook] Failed to create signed URL for thumbnail:', signedUrlError);
+        // Fall back to public URL if signed URL fails
+        const { data: urlData } = serviceRoleClient.storage
+          .from(bucketId)
+          .getPublicUrl(thumbnailPath);
+        thumbnailUrl = urlData?.publicUrl;
+      } else {
+        thumbnailUrl = signedUrlData?.signedUrl;
+      }
+      
       console.log('[Webhook] Thumbnail URL will be stored with transcript:', thumbnailUrl);
     }
 
